@@ -80,6 +80,10 @@ export default function SessionManager({
             lastSeen: Date.now(),
           }]]),
         };
+        // Store session info for RemoteAccess component
+        sessionStorage.setItem('sessionId', session.id);
+        sessionStorage.setItem('sessionCode', session.code);
+        sessionStorage.setItem('deviceId', deviceId);
         setCreatedSession(session);
         // Switch to DeviceTiles view immediately so we can receive device_connected messages
         onSessionCreated(session);
@@ -107,6 +111,10 @@ export default function SessionManager({
             ])
           ),
         };
+        // Store session info for RemoteAccess component
+        sessionStorage.setItem('sessionId', joinedSession.id);
+        sessionStorage.setItem('sessionCode', joinedSession.code);
+        sessionStorage.setItem('deviceId', deviceId);
         onSessionJoined(joinedSession);
         break;
 

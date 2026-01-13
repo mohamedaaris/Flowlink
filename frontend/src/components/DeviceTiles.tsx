@@ -48,6 +48,11 @@ export default function DeviceTiles({
   const mediaDetectorRef = useRef<MediaDetector | null>(null);
 
   useEffect(() => {
+    // Store session info for RemoteAccess component
+    sessionStorage.setItem('sessionId', session.id);
+    sessionStorage.setItem('sessionCode', session.code);
+    sessionStorage.setItem('deviceId', deviceId);
+    
     // Initialize WebSocket connection
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
@@ -250,20 +255,23 @@ export default function DeviceTiles({
           currentPerms.prompts = true;
           console.log('Granting PROMPTS permission');
           break;
-        case 'clipboard_sync':
-          // Check if this is a remote access toggle request
-          const clipboardText = intent.payload.clipboard?.text;
-          if (clipboardText === 'ENABLE_REMOTE_ACCESS') {
-            currentPerms.remote_browse = true;
-            console.log('Granting REMOTE_BROWSE permission');
-          } else if (clipboardText === 'DISABLE_REMOTE_ACCESS') {
-            currentPerms.remote_browse = false;
-            console.log('Revoking REMOTE_BROWSE permission');
-          } else {
-            currentPerms.clipboard = true;
-            console.log('Granting CLIPBOARD permission');
-          }
-          break;
+      case 'clipboard_sync':
+        // Check if this is a remote access toggle request
+        const clipboardText = intent.payload.clipboard?.text;
+        if (clipboardText === 'ENABLE_REMOTE_ACCESS') {
+          currentPerms.remote_browse = true;
+          console.log('Granting REMOTE_BROWSE permission');
+        } else if (clipboardText === 'DISABLE_REMOTE_ACCESS') {
+          currentPerms.remote_browse = false;
+          console.log('Revoking REMOTE_BROWSE permission');
+        } else {
+          currentPerms.clipboard = true;
+          console.log('Granting CLIPBOARD permission');
+        }
+        break;
+      case 'remote_access_request':
+        // Remote access request doesn't grant a permission, it triggers screen sharing
+        break;
         case 'link_open':
           // Links don't need special permission
           break;
@@ -318,6 +326,8 @@ export default function DeviceTiles({
         return `${deviceName} wants to send you a prompt: "${intent.payload.prompt?.text.substring(0, 50)}...". Allow?`;
       case 'clipboard_sync':
         return `${deviceName} wants to sync clipboard. Allow?`;
+      case 'remote_access_request':
+        return `${deviceName} wants to view your screen remotely. Allow screen sharing?`;
       default:
         return `${deviceName} wants to perform an action. Allow?`;
     }
@@ -339,6 +349,9 @@ export default function DeviceTiles({
         break;
       case 'clipboard_sync':
         await handleClipboardSync(intent);
+        break;
+      case 'remote_access_request':
+        await handleRemoteAccessRequest(intent, sourceDevice);
         break;
     }
   };
@@ -516,6 +529,38 @@ export default function DeviceTiles({
       console.log('Clipboard synced');
     } catch (err) {
       console.error('Failed to sync clipboard:', err);
+    }
+  };
+
+  const handleRemoteAccessRequest = async (intent: Intent, viewerDeviceId: string) => {
+    if (!intent.payload.request) return;
+    
+    const { action } = intent.payload.request;
+    
+    if (action === 'start_screen_share') {
+      try {
+        // Import RemoteDesktopManager dynamically
+        const RemoteDesktopManager = (await import('../services/RemoteDesktopManager')).default;
+        
+        // Get viewer device ID from intent payload
+        const actualViewerDeviceId = intent.payload.request.viewerDeviceId || viewerDeviceId;
+        
+        // Create manager as source device
+        const manager = new RemoteDesktopManager(
+          wsRef.current!,
+          session.id,
+          deviceId, // source device (this device)
+          actualViewerDeviceId, // viewer device (requesting device)
+          true // isSource = true (we're sharing our screen)
+        );
+        
+        // Start screen sharing
+        await manager.startScreenShare();
+        console.log('Screen sharing started');
+      } catch (err) {
+        console.error('Failed to start screen sharing:', err);
+        alert('Failed to start screen sharing: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      }
     }
   };
 

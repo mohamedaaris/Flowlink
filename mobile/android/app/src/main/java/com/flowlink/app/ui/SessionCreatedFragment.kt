@@ -77,6 +77,14 @@ class SessionCreatedFragment : Fragment() {
             }
         }
 
+        // Automatically navigate to device tiles after showing QR code
+        // This allows the user to see when other devices join
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            sessionId?.let { id ->
+                (activity as? MainActivity)?.showDeviceTiles(id)
+            }
+        }, 2000) // Show QR for 2 seconds, then show device tiles
+
         btnDone.setOnClickListener {
             sessionId?.let { id ->
                 (activity as? MainActivity)?.showDeviceTiles(id)

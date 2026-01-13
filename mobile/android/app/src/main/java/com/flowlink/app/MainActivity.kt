@@ -31,7 +31,7 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var sessionManager: SessionManager
-    private lateinit var webSocketManager: WebSocketManager
+    lateinit var webSocketManager: WebSocketManager
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -64,6 +64,20 @@ class MainActivity : AppCompatActivity() {
             webSocketManager.receivedIntents.collectLatest { remoteIntent: FlowIntent? ->
                 if (remoteIntent != null) {
                     handleRemoteIntent(remoteIntent)
+                }
+            }
+        }
+
+        // React to device connections to update UI
+        lifecycleScope.launch {
+            webSocketManager.deviceConnected.collectLatest { deviceInfo ->
+                deviceInfo?.let {
+                    // Update device tiles fragment if it's showing
+                    val fragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+                    if (fragment is DeviceTilesFragment) {
+                        // Fragment will handle updating its UI
+                        android.util.Log.d("FlowLink", "Device connected: ${it.name}")
+                    }
                 }
             }
         }
@@ -350,6 +364,33 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "Failed to copy text", Toast.LENGTH_SHORT).show()
                 }
             }
+            "remote_access_request" -> {
+                val payload = intent.payload ?: return
+                val requestJson = payload["request"] ?: return
+                try {
+                    val requestObj = JSONObject(requestJson)
+                    val action = requestObj.optString("action", "")
+                    
+                    if (action == "start_screen_share") {
+                        // Show permission dialog for screen sharing
+                        val sourceDeviceName = intent.sourceDevice ?: "Unknown Device"
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("Remote Access Request")
+                            .setMessage("$sourceDeviceName wants to view your screen. Allow screen sharing?")
+                            .setPositiveButton("Allow") { _, _ ->
+                                // Start screen sharing
+                                startScreenSharing(intent.sourceDevice ?: "")
+                            }
+                            .setNegativeButton("Deny") { _, _ ->
+                                Toast.makeText(this, "Screen sharing denied", Toast.LENGTH_SHORT).show()
+                            }
+                            .show()
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("FlowLink", "Failed to handle remote access request", e)
+                    Toast.makeText(this, "Failed to handle remote access request", Toast.LENGTH_SHORT).show()
+                }
+            }
             "prompt_injection" -> {
                 val payload = intent.payload ?: return
                 val promptJson = payload["prompt"] ?: return
@@ -451,5 +492,17 @@ class MainActivity : AppCompatActivity() {
             android.util.Log.e("FlowLink", "Failed to open file", e)
             Toast.makeText(this, "Failed to open file: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun startScreenSharing(viewerDeviceId: String) {
+        // Note: Android screen sharing requires MediaProjection API
+        // This is a placeholder - full implementation would require:
+        // 1. Request MediaProjection permission
+        // 2. Capture screen frames
+        // 3. Encode and send via WebRTC
+        // For now, show a message
+        Toast.makeText(this, "Screen sharing requested. Full implementation requires MediaProjection API setup.", Toast.LENGTH_LONG).show()
+        android.util.Log.d("FlowLink", "Screen sharing requested for viewer: $viewerDeviceId")
+        // TODO: Implement MediaProjection-based screen capture
     }
 }

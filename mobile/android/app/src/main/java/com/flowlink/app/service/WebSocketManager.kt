@@ -34,10 +34,20 @@ class WebSocketManager(private val sessionManager: SessionManager) {
     private val _sessionCreated = MutableStateFlow<SessionCreatedEvent?>(null)
     val sessionCreated: StateFlow<SessionCreatedEvent?> = _sessionCreated
 
+    // Emits info about devices that connect to the current session
+    private val _deviceConnected = MutableStateFlow<DeviceInfo?>(null)
+    val deviceConnected: StateFlow<DeviceInfo?> = _deviceConnected
+
     data class SessionCreatedEvent(
         val sessionId: String,
         val code: String,
         val expiresAt: Long
+    )
+
+    data class DeviceInfo(
+        val id: String,
+        val name: String,
+        val type: String
     )
 
     // IMPORTANT: Change this based on your setup
@@ -179,7 +189,14 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                     _receivedIntents.value = intent
                 }
                 "device_connected" -> {
-                    Log.d("FlowLink", "Device connected")
+                    val deviceJson = json.getJSONObject("payload").getJSONObject("device")
+                    val deviceInfo = DeviceInfo(
+                        id = deviceJson.getString("id"),
+                        name = deviceJson.getString("name"),
+                        type = deviceJson.getString("type")
+                    )
+                    _deviceConnected.value = deviceInfo
+                    Log.d("FlowLink", "Device connected: ${deviceInfo.name}")
                 }
                 "device_disconnected" -> {
                     Log.d("FlowLink", "Device disconnected")
@@ -197,6 +214,26 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                     
                     _sessionCreated.value = SessionCreatedEvent(sessionId, code, expiresAt)
                     Log.d("FlowLink", "Session created: $code")
+                }
+                "session_joined" -> {
+                    val payload = json.getJSONObject("payload")
+                    val devicesArray = payload.optJSONArray("devices")
+                    if (devicesArray != null) {
+                        // Notify about all devices in session
+                        for (i in 0 until devicesArray.length()) {
+                            val deviceJson = devicesArray.getJSONObject(i)
+                            val deviceInfo = DeviceInfo(
+                                id = deviceJson.getString("id"),
+                                name = deviceJson.getString("name"),
+                                type = deviceJson.getString("type")
+                            )
+                            // Only notify about other devices
+                            if (deviceInfo.id != sessionManager.getDeviceId()) {
+                                _deviceConnected.value = deviceInfo
+                            }
+                        }
+                    }
+                    Log.d("FlowLink", "Session joined, devices updated")
                 }
                 "session_expired" -> {
                     Log.d("FlowLink", "Session expired")

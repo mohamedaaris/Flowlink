@@ -385,8 +385,38 @@ export default function DeviceTile({
         {device.permissions.remote_browse && (
           <button
             className="remote-access-button"
-            onClick={() => {
-              // Open remote access interface
+            onClick={async () => {
+              // Get device ID from session storage or generate
+              const viewerDeviceId = sessionStorage.getItem('deviceId') || 
+                (() => {
+                  const id = 'viewer-' + Date.now();
+                  sessionStorage.setItem('deviceId', id);
+                  return id;
+                })();
+              
+              // Store session info for RemoteAccess component
+              const sessionCode = sessionStorage.getItem('sessionCode');
+              const sessionId = sessionStorage.getItem('sessionId');
+              if (sessionCode) sessionStorage.setItem('sessionCode', sessionCode);
+              if (sessionId) sessionStorage.setItem('sessionId', sessionId);
+              
+              // Send remote access request to source device
+              const intent: Intent = {
+                intent_type: 'remote_access_request',
+                payload: {
+                  request: {
+                    viewerDeviceId: viewerDeviceId,
+                    action: 'start_screen_share',
+                  },
+                },
+                target_device: device.id,
+                source_device: viewerDeviceId,
+                auto_open: false,
+                timestamp: Date.now(),
+              };
+              // Send request first
+              onDrop(intent);
+              // Then open remote view interface
               window.open(`/remote/${device.id}`, '_blank');
             }}
           >
