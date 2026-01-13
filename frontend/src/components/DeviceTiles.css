@@ -1,0 +1,150 @@
+.device-tiles-container {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.device-tiles-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.device-tiles-header h2 {
+  color: #333;
+  font-size: 1.8rem;
+}
+
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.session-info span {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.btn-leave {
+  padding: 0.5rem 1rem;
+  background: #fee;
+  color: #c33;
+  border: 1px solid #fcc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-leave:hover {
+  background: #fdd;
+}
+
+.drag-drop-zone {
+  min-height: 400px;
+}
+
+.drag-instructions {
+  text-align: center;
+  color: #666;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.drop-area {
+  min-height: 300px;
+  position: relative;
+}
+
+/* Ensure device tiles can receive drop events */
+.device-tiles-grid {
+  position: relative;
+  z-index: 1;
+  pointer-events: none; /* Allow clicks/drops to pass through to tiles */
+}
+
+.device-tiles-grid > * {
+  pointer-events: auto; /* Re-enable for child elements (tiles) */
+}
+
+.no-devices {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #999;
+}
+
+.no-devices p {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.session-code-hint {
+  font-size: 1.2rem;
+  color: #333;
+}
+
+.session-code-hint strong {
+  font-family: 'Courier New', monospace;
+  font-size: 1.5rem;
+  color: #667eea;
+  letter-spacing: 0.2rem;
+}
+
+.device-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.qr-code-section {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.qr-label {
+  margin-bottom: 1rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.qr-container-small {
+  display: flex;
+  justify-content: center;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 8px;
+}
+
+.session-code-display-small {
+  margin-top: 1rem;
+  font-size: 1rem;
+  color: #333;
+}
+
+.session-code-display-small strong {
+  font-family: 'Courier New', monospace;
+  font-size: 1.2rem;
+  color: #667eea;
+  letter-spacing: 0.1rem;
+}
+
+@media (max-width: 768px) {
+  .device-tiles-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .device-tiles-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
+

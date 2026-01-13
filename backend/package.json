@@ -1,0 +1,19 @@
+{
+  "name": "flowlink-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "FlowLink backend - WebSocket signaling server",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}
+

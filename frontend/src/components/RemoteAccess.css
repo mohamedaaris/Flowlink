@@ -1,0 +1,116 @@
+.remote-access-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f5f5f5;
+}
+
+.remote-access-header {
+  display: flex;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.back-button {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  margin-right: 1rem;
+  color: #1976d2;
+  transition: color 0.2s;
+}
+
+.back-button:hover {
+  color: #1565c0;
+}
+
+.remote-access-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.remote-access-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.remote-access-error {
+  max-width: 600px;
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.remote-access-error h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.remote-access-error p {
+  color: #666;
+  line-height: 1.6;
+}
+
+.remote-access-info {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.remote-access-info h4 {
+  margin-top: 0;
+  color: #333;
+}
+
+.remote-access-info ul {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+  color: #666;
+}
+
+.remote-access-info li {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+}
+
+.note {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+  border-radius: 4px;
+  color: #856404;
+}
+
+.note strong {
+  color: #856404;
+}
+
+.remote-access-loading {
+  text-align: center;
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #1976d2;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
