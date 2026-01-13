@@ -17,7 +17,9 @@ data class Device(
     val name: String,
     val type: String,
     val online: Boolean,
-    val permissions: Map<String, Boolean> = emptyMap()
+    val permissions: Map<String, Boolean> = emptyMap(),
+    val joinedAt: Long = System.currentTimeMillis(),
+    val lastSeen: Long = System.currentTimeMillis()
 )
 
 data class Intent(

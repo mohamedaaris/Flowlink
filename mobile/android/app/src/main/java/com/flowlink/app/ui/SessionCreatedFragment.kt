@@ -10,8 +10,11 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.flowlink.app.MainActivity
 import com.flowlink.app.R
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -77,13 +80,26 @@ class SessionCreatedFragment : Fragment() {
             }
         }
 
-        // Automatically navigate to device tiles after showing QR code
-        // This allows the user to see when other devices join
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            sessionId?.let { id ->
-                (activity as? MainActivity)?.showDeviceTiles(id)
+        // Listen for device connections and navigate to device tiles when a device joins
+        // Keep QR code visible until a device connects
+        val mainActivity = activity as? MainActivity
+        if (mainActivity != null && sessionId != null) {
+            var hasNavigated = false
+            
+            // Use lifecycleScope to listen for device connections
+            lifecycleScope.launch {
+                mainActivity.webSocketManager.deviceConnected.collectLatest { deviceInfo ->
+                    deviceInfo?.let {
+                        if (!hasNavigated) {
+                            hasNavigated = true
+                            sessionId?.let { id ->
+                                (activity as? MainActivity)?.showDeviceTiles(id)
+                            }
+                        }
+                    }
+                }
             }
-        }, 2000) // Show QR for 2 seconds, then show device tiles
+        }
 
         btnDone.setOnClickListener {
             sessionId?.let { id ->
