@@ -8,7 +8,10 @@ import androidx.recyclerview.widget.RecyclerView
 import com.flowlink.app.R
 import com.flowlink.app.model.Device
 
-class DeviceTileAdapter(private val devices: List<Device>) : RecyclerView.Adapter<DeviceTileAdapter.DeviceViewHolder>() {
+class DeviceTileAdapter(
+    private val devices: List<Device>,
+    private val onDeviceClick: (Device) -> Unit
+) : RecyclerView.Adapter<DeviceTileAdapter.DeviceViewHolder>() {
 
     class DeviceViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val deviceName: TextView = itemView.findViewById(R.id.device_name)
@@ -48,6 +51,12 @@ class DeviceTileAdapter(private val devices: List<Device>) : RecyclerView.Adapte
             "No permissions"
         } else {
             permissionList.joinToString(", ")
+        }
+
+        // When a device tile is tapped, notify the fragment so it can
+        // read clipboard / pick files and send an intent to that device.
+        holder.itemView.setOnClickListener {
+            onDeviceClick(device)
         }
     }
 

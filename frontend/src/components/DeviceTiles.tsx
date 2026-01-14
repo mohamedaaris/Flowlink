@@ -318,10 +318,32 @@ export default function DeviceTiles({
     switch (intent.intent_type) {
       case 'file_handoff':
         return `${deviceName} wants to send you a file: ${intent.payload.file?.name}. Allow?`;
-      case 'media_continuation':
-        return `${deviceName} wants to continue playing media: ${intent.payload.media?.url}. Allow?`;
-      case 'link_open':
-        return `${deviceName} wants to open a link: ${intent.payload.link?.url}. Allow?`;
+      case 'media_continuation': {
+        const rawMedia = intent.payload.media as any;
+        let url = '';
+        if (typeof rawMedia === 'string') {
+          try {
+            const mediaObj = JSON.parse(rawMedia);
+            url = mediaObj.url || '';
+          } catch {}
+        } else {
+          url = rawMedia?.url || '';
+        }
+        return `${deviceName} wants to continue playing media: ${url}. Allow?`;
+      }
+      case 'link_open': {
+        const rawLink = intent.payload.link as any;
+        let url = '';
+        if (typeof rawLink === 'string') {
+          try {
+            const linkObj = JSON.parse(rawLink);
+            url = linkObj.url || '';
+          } catch {}
+        } else {
+          url = rawLink?.url || '';
+        }
+        return `${deviceName} wants to open a link: ${url}. Allow?`;
+      }
       case 'prompt_injection':
         return `${deviceName} wants to send you a prompt: "${intent.payload.prompt?.text.substring(0, 50)}...". Allow?`;
       case 'clipboard_sync':
@@ -464,8 +486,33 @@ export default function DeviceTiles({
   };
 
   const handleLinkOpen = async (intent: Intent) => {
-    if (!intent.payload.link) return;
-    window.open(intent.payload.link.url, '_blank');
+    const rawLink = intent.payload.link as any;
+    if (!rawLink) {
+      console.warn('handleLinkOpen: missing link payload', intent);
+      return;
+    }
+
+    try {
+      // Android may send link payload as a JSON string; web sends it as an object.
+      const linkObj =
+        typeof rawLink === 'string'
+          ? JSON.parse(rawLink)
+          : rawLink;
+
+      if (!linkObj.url) {
+        console.warn('handleLinkOpen: link payload missing url', rawLink);
+        return;
+      }
+
+      console.log('handleLinkOpen: opening URL from intent in new tab', linkObj.url);
+      // Always try to open in a new tab so the FlowLink session page
+      // stays open and connected. If the browser blocks the popup,
+      // we intentionally do NOT navigate this tab, so the session
+      // is not lost.
+      window.open(linkObj.url, '_blank');
+    } catch (e) {
+      console.error('handleLinkOpen: failed to parse or open link payload', e, intent.payload.link);
+    }
   };
 
   const handlePromptInjection = async (intent: Intent) => {
@@ -519,16 +566,52 @@ export default function DeviceTiles({
   };
 
   const handleClipboardSync = async (intent: Intent) => {
-    if (!intent.payload.clipboard) return;
-    
-    const text = intent.payload.clipboard.text;
-    
-    // Copy to clipboard
+    const rawClipboard = intent.payload.clipboard as any;
+    if (!rawClipboard) {
+      console.warn('handleClipboardSync: missing clipboard payload', intent);
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(text);
-      console.log('Clipboard synced');
-    } catch (err) {
-      console.error('Failed to sync clipboard:', err);
+      // Android may send clipboard payload as a JSON string; web sends it as an object.
+      const clipboardObj =
+        typeof rawClipboard === 'string'
+          ? JSON.parse(rawClipboard)
+          : rawClipboard;
+
+      const text = clipboardObj.text;
+      if (typeof text !== 'string' || !text.length) {
+        console.warn('handleClipboardSync: clipboard payload missing text', rawClipboard);
+        return;
+      }
+
+      // Copy to clipboard with best-effort fallbacks.
+      // Modern browsers may require a user gesture for the async
+      // Clipboard API, so this can fail when triggered from a
+      // WebSocket event. If it does, fall back to the older
+      // execCommand("copy") path so we still give the user a chance
+      // to get the text into their clipboard.
+      try {
+        await navigator.clipboard.writeText(text);
+        console.log('Clipboard synced from intent via navigator.clipboard');
+      } catch (err) {
+        console.warn('navigator.clipboard.writeText failed, trying execCommand fallback', err);
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          const succeeded = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          console.log('Clipboard sync via execCommand result:', succeeded);
+        } catch (fallbackErr) {
+          console.error('Failed to sync clipboard via any method:', fallbackErr);
+        }
+      }
+    } catch (e) {
+      console.error('handleClipboardSync: failed to parse clipboard payload', e, intent.payload.clipboard);
     }
   };
 

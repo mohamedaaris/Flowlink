@@ -38,6 +38,13 @@ class WebSocketManager(private val sessionManager: SessionManager) {
     private val _deviceConnected = MutableStateFlow<DeviceInfo?>(null)
     val deviceConnected: StateFlow<DeviceInfo?> = _deviceConnected
 
+    private fun resetDeviceConnectedEvent() {
+        // StateFlow replays the latest value to new collectors (like SessionCreatedFragment).
+        // If we don't clear it, the QR screen can immediately auto-navigate to DeviceTiles
+        // due to a stale "device_connected" from a previous session.
+        _deviceConnected.value = null
+    }
+
     data class SessionCreatedEvent(
         val sessionId: String,
         val code: String,
@@ -60,6 +67,9 @@ class WebSocketManager(private val sessionManager: SessionManager) {
         if (_connectionState.value == ConnectionState.Connected) {
             return
         }
+
+        // Clear any stale device_connected event from a previous session
+        resetDeviceConnectedEvent()
 
         val request = Request.Builder()
             .url(WS_URL)
@@ -207,6 +217,9 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                     val code = payload.getString("code")
                     val expiresAt = payload.getLong("expiresAt")
                     
+                    // Clear stale device_connected so the QR screen doesn't immediately navigate
+                    resetDeviceConnectedEvent()
+
                     // Store session info
                     scope.launch {
                         sessionManager.setSessionInfo(sessionId, code)
@@ -217,6 +230,26 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                 }
                 "session_joined" -> {
                     val payload = json.getJSONObject("payload")
+
+                    // Backend sends the canonical sessionId here. For devices that
+                    // joined using only the 6-digit code, we initially stored a
+                    // locally generated sessionId in SessionManager. That local ID
+                    // does NOT exist on the backend, which breaks routing for
+                    // intents (including link_open) originating from Android.
+                    //
+                    // Fix: as soon as we receive session_joined, overwrite the
+                    // locally generated sessionId with the real backend sessionId
+                    // while preserving the original code. All future intent_send
+                    // messages will then contain a valid sessionId.
+                    val backendSessionId = payload.optString("sessionId", null)
+                    if (!backendSessionId.isNullOrEmpty()) {
+                        scope.launch {
+                            val currentCode = sessionManager.getCurrentSessionCode() ?: ""
+                            sessionManager.setSessionInfo(backendSessionId, currentCode)
+                            Log.d("FlowLink", "Updated session info from session_joined: id=$backendSessionId, code=$currentCode")
+                        }
+                    }
+
                     val devicesArray = payload.optJSONArray("devices")
                     if (devicesArray != null) {
                         // Notify about all devices in session

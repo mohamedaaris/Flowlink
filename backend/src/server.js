@@ -237,7 +237,25 @@ function handleSessionJoin(ws, message) {
       },
       timestamp: Date.now()
     }));
-    
+
+    // Also notify all OTHER devices that this device is (back) online so
+    // their UIs (e.g. laptop DeviceTiles) can recreate the tile.
+    broadcastToSession(session.id, {
+      type: 'device_connected',
+      sessionId: session.id,
+      payload: {
+        device: {
+          id: existingDevice.id,
+          name: existingDevice.name,
+          type: existingDevice.type,
+          online: true,
+          permissions: existingDevice.permissions,
+          joinedAt: existingDevice.joinedAt
+        }
+      },
+      timestamp: Date.now()
+    }, deviceId);
+
     console.log(`Device ${deviceId} reconnected to session ${session.id}`);
     return;
   }
