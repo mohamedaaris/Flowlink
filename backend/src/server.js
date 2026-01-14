@@ -206,7 +206,10 @@ function handleSessionJoin(ws, message) {
   // Check expiry
   if (isSessionExpired(session.expiresAt)) {
     sessions.delete(session.id);
-    sendError(ws, 'Session has expired');
+    // For clients, an expired session should behave the same as an
+    // unknown/non-existent session. Always report it as an invalid
+    // code so users don’t get confused by old/unused codes.
+    sendError(ws, 'Invalid session code');
     return;
   }
 

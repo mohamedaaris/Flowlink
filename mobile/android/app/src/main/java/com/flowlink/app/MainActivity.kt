@@ -178,10 +178,46 @@ class MainActivity : AppCompatActivity() {
     fun joinSession(code: String) {
         lifecycleScope.launch {
             try {
+                // Persist the attempted code locally so intents (if join succeeds)
+                // can be routed correctly once we know the real backend sessionId.
                 val session = sessionManager.joinSession(code)
-                // Connect to backend signaling using the scanned/entered code
+
+                // Connect to backend signaling using the scanned/entered code.
+                // WebSocketManager will send session_join on open.
                 webSocketManager.connect(code)
-                showDeviceTiles(session.sessionId)
+
+                // Wait for backend confirmation or error before navigating.
+                webSocketManager.sessionJoinState.collectLatest { state ->
+                    when (state) {
+                        is WebSocketManager.SessionJoinState.Success -> {
+                            // Ensure we have the real sessionId from backend. The
+                            // WebSocketManager already updates SessionManager with the
+                            // canonical id; we use the id from the event to show tiles.
+                            val backendSessionId = state.sessionId.ifEmpty {
+                                sessionManager.getCurrentSessionId() ?: session.sessionId
+                            }
+                            showDeviceTiles(backendSessionId)
+                            // Once we navigate, stop collecting to avoid duplicate navigation
+                            return@collectLatest
+                        }
+                        is WebSocketManager.SessionJoinState.Error -> {
+                            // Show backend error (e.g., "Invalid session code") and
+                            // clear the temporary local session so user can retry.
+                            Toast.makeText(
+                                this@MainActivity,
+                                state.message,
+                                Toast.LENGTH_LONG
+                            ).show()
+                            sessionManager.leaveSession()
+                            webSocketManager.disconnect()
+                            // Stop collecting after handling error
+                            return@collectLatest
+                        }
+                        else -> {
+                            // Idle / InProgress: just keep waiting
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 Toast.makeText(this@MainActivity, "Failed to join session: ${e.message}", Toast.LENGTH_LONG).show()
             }

@@ -38,6 +38,10 @@ class WebSocketManager(private val sessionManager: SessionManager) {
     private val _deviceConnected = MutableStateFlow<DeviceInfo?>(null)
     val deviceConnected: StateFlow<DeviceInfo?> = _deviceConnected
 
+    // Emits join-session state so the UI can react to success or failure
+    private val _sessionJoinState = MutableStateFlow<SessionJoinState>(SessionJoinState.Idle)
+    val sessionJoinState: StateFlow<SessionJoinState> = _sessionJoinState
+
     private fun resetDeviceConnectedEvent() {
         // StateFlow replays the latest value to new collectors (like SessionCreatedFragment).
         // If we don't clear it, the QR screen can immediately auto-navigate to DeviceTiles
@@ -70,6 +74,13 @@ class WebSocketManager(private val sessionManager: SessionManager) {
 
         // Clear any stale device_connected event from a previous session
         resetDeviceConnectedEvent()
+
+        // Track join flow state when we are connecting with a code
+        if (sessionCode.isNotEmpty()) {
+            _sessionJoinState.value = SessionJoinState.InProgress
+        } else {
+            _sessionJoinState.value = SessionJoinState.Idle
+        }
 
         val request = Request.Builder()
             .url(WS_URL)
@@ -117,6 +128,10 @@ class WebSocketManager(private val sessionManager: SessionManager) {
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e("FlowLink", "WebSocket failure", t)
                 _connectionState.value = ConnectionState.Error(t.message ?: "Unknown error")
+                // Treat connection failure during a join attempt as a join error
+                if (_sessionJoinState.value is SessionJoinState.InProgress) {
+                    _sessionJoinState.value = SessionJoinState.Error(t.message ?: "Unable to connect")
+                }
             }
         })
     }
@@ -125,6 +140,7 @@ class WebSocketManager(private val sessionManager: SessionManager) {
         webSocket?.close(1000, "Normal closure")
         webSocket = null
         _connectionState.value = ConnectionState.Disconnected
+        _sessionJoinState.value = SessionJoinState.Idle
     }
 
     fun sendMessage(message: String) {
@@ -267,6 +283,14 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                         }
                     }
                     Log.d("FlowLink", "Session joined, devices updated")
+
+                    // Mark join as successful so UI can navigate
+                    val joinedSessionId = payload.optString("sessionId", null)
+                    if (!joinedSessionId.isNullOrEmpty()) {
+                        _sessionJoinState.value = SessionJoinState.Success(joinedSessionId)
+                    } else {
+                        _sessionJoinState.value = SessionJoinState.Success(sessionManager.getCurrentSessionId() ?: "")
+                    }
                 }
                 "session_expired" -> {
                     Log.d("FlowLink", "Session expired")
@@ -274,7 +298,19 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                     scope.launch {
                         sessionManager.leaveSession()
                     }
+                    // Let UI know the current/joined session is no longer valid
+                    _sessionJoinState.value = SessionJoinState.Error("Invalid session code")
                     disconnect()
+                }
+                "error" -> {
+                    // Backend error (e.g., invalid session code). Surface this to the UI,
+                    // especially during a join attempt.
+                    val payload = json.optJSONObject("payload")
+                    val message = payload?.optString("message", "Unknown error") ?: "Unknown error"
+                    Log.e("FlowLink", "Backend error: $message")
+                    if (_sessionJoinState.value is SessionJoinState.InProgress) {
+                        _sessionJoinState.value = SessionJoinState.Error(message)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -287,5 +323,12 @@ class WebSocketManager(private val sessionManager: SessionManager) {
         object Connecting : ConnectionState()
         object Connected : ConnectionState()
         data class Error(val message: String) : ConnectionState()
+    }
+
+    sealed class SessionJoinState {
+        object Idle : SessionJoinState()
+        object InProgress : SessionJoinState()
+        data class Success(val sessionId: String) : SessionJoinState()
+        data class Error(val message: String) : SessionJoinState()
     }
 }
