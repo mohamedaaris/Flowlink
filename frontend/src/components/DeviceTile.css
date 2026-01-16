@@ -1,7 +1,7 @@
 .device-tile {
-  background: #f8f9fa;
-  border: 2px solid #e0e0e0;
-  border-radius: 12px;
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%);
+  border: 3px solid #667eea;
+  border-radius: 16px;
   padding: 1.5rem;
   transition: all 0.2s;
   cursor: pointer;
@@ -12,19 +12,20 @@
   z-index: 10;
   pointer-events: auto !important;
   user-select: none;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
 }
 
 .device-tile:hover {
-  border-color: #667eea;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+  border-color: #5563d6;
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
   transform: translateY(-2px);
 }
 
 .device-tile.drag-over {
-  border-color: #667eea;
-  background: #f0f4ff;
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
-  transform: scale(1.02);
+  border-color: #5563d6;
+  background: linear-gradient(135deg, #e8eeff 0%, #dde5ff 100%);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.5);
+  transform: scale(1.03);
 }
 
 .device-tile.offline {
@@ -42,6 +43,7 @@
 .device-icon {
   font-size: 2.5rem;
   line-height: 1;
+  filter: grayscale(0%) brightness(1.2);
 }
 
 .device-info {
@@ -49,10 +51,11 @@
 }
 
 .device-name {
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: #333;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #000000 !important;
   margin-bottom: 0.25rem;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
 }
 
 .device-status {
@@ -69,22 +72,24 @@
 }
 
 .status-text {
-  font-size: 0.85rem;
-  color: #666;
+  font-size: 0.9rem;
+  color: #000000 !important;
+  font-weight: 600;
 }
 
 .device-permissions {
   margin-top: auto;
   padding-top: 1rem;
-  border-top: 1px solid #e0e0e0;
+  border-top: 2px solid #667eea;
 }
 
 .permission-label {
-  font-size: 0.8rem;
-  color: #666;
+  font-size: 0.85rem;
+  color: #000000 !important;
   margin-bottom: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-weight: 700;
 }
 
 .permission-badges {
@@ -94,17 +99,25 @@
 }
 
 .permission-badge {
-  padding: 0.25rem 0.75rem;
+  padding: 0.35rem 0.85rem;
   background: #667eea;
   color: white;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+  transition: all 0.2s;
+}
+
+.permission-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(102, 126, 234, 0.4);
 }
 
 .permission-badge.inactive {
-  background: #ccc;
+  background: #e0e0e0;
   color: #666;
+  box-shadow: none;
 }
 
 .drop-indicator {
@@ -124,84 +137,127 @@
 .drop-message {
   background: #667eea;
   color: white;
-  padding: 1rem 2rem;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 1.1rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  padding: 1.2rem 2.5rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1.2rem;
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
 }
 
 .device-clipboard {
   margin-top: 1rem;
   display: flex;
   gap: 0.5rem;
-  align-items: center;
+  align-items: stretch;
 }
 
 .device-clipboard-input {
   flex: 1;
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 2px solid #667eea;
   font-size: 0.85rem;
+  background: white;
+  color: #000000 !important;
+  font-weight: 500;
+}
+
+.device-clipboard-input::placeholder {
+  color: #999;
 }
 
 .device-clipboard-button {
-  padding: 0.4rem 0.75rem;
-  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
   border: none;
   background: #667eea;
   color: #fff;
   font-size: 0.85rem;
   cursor: pointer;
   white-space: nowrap;
+  font-weight: 600;
+  transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .device-clipboard-button:hover {
   background: #5563d6;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.device-clipboard-button:active {
+  transform: translateY(0);
 }
 
 .device-remote-access {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e0e0e0;
+  border-top: 2px solid #667eea;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.remote-access-toggle {
+.device-remote-access-toggle {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background 0.2s;
 }
 
-.remote-access-toggle input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
+.device-remote-access-toggle:hover {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.device-remote-access-toggle input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
   cursor: pointer;
+  accent-color: #667eea;
 }
 
 .toggle-label {
   user-select: none;
-  color: #333;
+  color: #000000 !important;
+  font-weight: 600;
 }
 
 .remote-access-button {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #667eea;
-  background: #f0f4ff;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: 2px solid #667eea;
+  background: white;
   color: #667eea;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s;
+  font-weight: 600;
 }
 
 .remote-access-button:hover {
   background: #667eea;
   color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.remote-access-button:active {
+  transform: translateY(0);
 }
 

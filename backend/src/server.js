@@ -75,6 +75,26 @@ wss.on('connection', (ws, req) => {
           handleIntentSend(ws, message);
           break;
           
+        case 'clipboard_broadcast':
+          handleClipboardBroadcast(ws, message);
+          break;
+          
+        case 'group_create':
+          handleGroupCreate(ws, message);
+          break;
+          
+        case 'group_update':
+          handleGroupUpdate(ws, message);
+          break;
+          
+        case 'group_delete':
+          handleGroupDelete(ws, message);
+          break;
+          
+        case 'group_broadcast':
+          handleGroupBroadcast(ws, message);
+          break;
+          
         default:
           sendError(ws, `Unknown message type: ${message.type}`);
       }
@@ -134,7 +154,8 @@ function handleSessionCreate(ws, message) {
     createdBy: deviceId,
     createdAt: now,
     expiresAt: now + SESSION_EXPIRY_MS,
-    devices: new Map()
+    devices: new Map(),
+    groups: new Map() // Initialize groups
   };
 
   // Add creator device
@@ -236,7 +257,8 @@ function handleSessionJoin(ws, message) {
           online: d.online,
           permissions: d.permissions,
           joinedAt: d.joinedAt
-        }))
+        })),
+        groups: Array.from(session.groups.values())
       },
       timestamp: Date.now()
     }));
@@ -320,7 +342,8 @@ function handleSessionJoin(ws, message) {
         online: d.online,
         permissions: d.permissions,
         joinedAt: d.joinedAt
-      }))
+      })),
+      groups: Array.from(session.groups.values())
     },
     timestamp: Date.now()
   }));
@@ -537,6 +560,35 @@ function handleIntentSend(ws, message) {
 }
 
 /**
+ * Handle clipboard broadcast (universal clipboard sync)
+ */
+function handleClipboardBroadcast(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { clipboard } = message.payload;
+
+  console.log(`handleClipboardBroadcast: Device ${deviceId} broadcasting clipboard`);
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    console.error(`Session ${sessionId} not found`);
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  // Broadcast clipboard to all OTHER devices in session
+  broadcastToSession(sessionId, {
+    type: 'clipboard_sync',
+    sessionId,
+    payload: {
+      clipboard: clipboard
+    },
+    timestamp: Date.now()
+  }, deviceId); // Exclude sender
+
+  console.log(`Clipboard broadcast to all devices in session ${sessionId}`);
+}
+
+/**
  * Broadcast message to all devices in session (except sender)
  */
 function broadcastToSession(sessionId, message, excludeDeviceId = null) {
@@ -589,4 +641,223 @@ setInterval(() => {
     }
   }
 }, 60000); // Check every minute
+
+/**
+ * Handle group creation
+ */
+function handleGroupCreate(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { name, deviceIds, color } = message.payload;
+
+  console.log(`handleGroupCreate: Device ${deviceId} creating group "${name}" with devices:`, deviceIds);
+
+  if (!name || !deviceIds || !Array.isArray(deviceIds)) {
+    sendError(ws, 'Missing required fields: name, deviceIds');
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  // Validate all device IDs exist in session
+  for (const devId of deviceIds) {
+    if (!session.devices.has(devId)) {
+      sendError(ws, `Device ${devId} not found in session`);
+      return;
+    }
+  }
+
+  // Create group
+  const groupId = uuidv4();
+  const group = {
+    id: groupId,
+    name,
+    deviceIds,
+    createdBy: deviceId,
+    createdAt: Date.now(),
+    color: color || generateRandomColor()
+  };
+
+  session.groups.set(groupId, group);
+
+  // Broadcast to all devices in session
+  broadcastToSession(sessionId, {
+    type: 'group_created',
+    sessionId,
+    payload: { group },
+    timestamp: Date.now()
+  });
+
+  console.log(`Group ${groupId} created: "${name}" with ${deviceIds.length} devices`);
+}
+
+/**
+ * Handle group update
+ */
+function handleGroupUpdate(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { groupId, name, deviceIds, color } = message.payload;
+
+  console.log(`handleGroupUpdate: Device ${deviceId} updating group ${groupId}`);
+
+  if (!groupId) {
+    sendError(ws, 'Missing required field: groupId');
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  const group = session.groups.get(groupId);
+  if (!group) {
+    sendError(ws, 'Group not found');
+    return;
+  }
+
+  // Update group properties
+  if (name) group.name = name;
+  if (color) group.color = color;
+  if (deviceIds && Array.isArray(deviceIds)) {
+    // Validate all device IDs
+    for (const devId of deviceIds) {
+      if (!session.devices.has(devId)) {
+        sendError(ws, `Device ${devId} not found in session`);
+        return;
+      }
+    }
+    group.deviceIds = deviceIds;
+  }
+
+  // Broadcast update to all devices
+  broadcastToSession(sessionId, {
+    type: 'group_updated',
+    sessionId,
+    payload: { group },
+    timestamp: Date.now()
+  });
+
+  console.log(`Group ${groupId} updated`);
+}
+
+/**
+ * Handle group deletion
+ */
+function handleGroupDelete(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { groupId } = message.payload;
+
+  console.log(`handleGroupDelete: Device ${deviceId} deleting group ${groupId}`);
+
+  if (!groupId) {
+    sendError(ws, 'Missing required field: groupId');
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  if (!session.groups.has(groupId)) {
+    sendError(ws, 'Group not found');
+    return;
+  }
+
+  session.groups.delete(groupId);
+
+  // Broadcast deletion to all devices
+  broadcastToSession(sessionId, {
+    type: 'group_deleted',
+    sessionId,
+    payload: { groupId },
+    timestamp: Date.now()
+  });
+
+  console.log(`Group ${groupId} deleted`);
+}
+
+/**
+ * Handle group broadcast (send intent to all devices in group)
+ */
+function handleGroupBroadcast(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { groupId, intent } = message.payload;
+
+  console.log(`handleGroupBroadcast: Device ${deviceId} broadcasting to group ${groupId}`);
+
+  if (!groupId || !intent) {
+    sendError(ws, 'Missing required fields: groupId, intent');
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  const group = session.groups.get(groupId);
+  if (!group) {
+    sendError(ws, 'Group not found');
+    return;
+  }
+
+  // Send intent to all devices in group
+  let successCount = 0;
+  for (const targetDeviceId of group.deviceIds) {
+    const targetWs = deviceConnections.get(targetDeviceId);
+    if (targetWs && targetWs.readyState === targetWs.OPEN) {
+      targetWs.send(JSON.stringify({
+        type: 'intent_received',
+        sessionId,
+        deviceId: targetDeviceId,
+        payload: {
+          intent: {
+            ...intent,
+            target_device: targetDeviceId,
+            source_device: deviceId
+          },
+          sourceDevice: deviceId,
+          fromGroup: groupId
+        },
+        timestamp: Date.now()
+      }));
+      successCount++;
+    }
+  }
+
+  // Acknowledge to sender
+  ws.send(JSON.stringify({
+    type: 'group_broadcast_sent',
+    sessionId,
+    deviceId,
+    payload: { 
+      groupId,
+      devicesReached: successCount,
+      totalDevices: group.deviceIds.length
+    },
+    timestamp: Date.now()
+  }));
+
+  console.log(`Group broadcast sent to ${successCount}/${group.deviceIds.length} devices in group ${groupId}`);
+}
+
+/**
+ * Generate random color for group
+ */
+function generateRandomColor() {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', 
+    '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
+    '#F8B739', '#52B788', '#E76F51', '#2A9D8F'
+  ];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
 

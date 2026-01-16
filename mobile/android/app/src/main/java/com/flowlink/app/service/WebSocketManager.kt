@@ -340,6 +340,24 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                     _sessionJoinState.value = SessionJoinState.Error("Invalid session code")
                     disconnect()
                 }
+                "clipboard_sync" -> {
+                    val clipboardJson = json.getJSONObject("payload").optJSONObject("clipboard")
+                    if (clipboardJson != null) {
+                        val text = clipboardJson.optString("text", "")
+                        if (text.isNotEmpty()) {
+                            Log.d("FlowLink", "📋 Received clipboard from remote: ${text.take(50)}...")
+                            // Update clipboard via MainActivity
+                            try {
+                                val context = sessionManager as? android.content.Context
+                                if (context is com.flowlink.app.MainActivity) {
+                                    context.updateClipboardFromRemote(text)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("FlowLink", "Failed to update clipboard", e)
+                            }
+                        }
+                    }
+                }
                 "error" -> {
                     // Backend error (e.g., invalid session code). Surface this to the UI,
                     // especially during a join attempt.

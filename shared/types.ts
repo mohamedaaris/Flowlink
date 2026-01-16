@@ -44,6 +44,16 @@ export interface Session {
   createdAt: number;
   expiresAt: number;
   devices: Map<string, Device>;
+  groups?: Map<string, Group>; // Device groups
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  deviceIds: string[]; // Array of device IDs in this group
+  createdBy: string; // device ID of creator
+  createdAt: number;
+  color?: string; // Optional color for UI
 }
 
 export interface Intent {
@@ -123,6 +133,13 @@ export type MessageType =
   | 'permission_request'
   | 'permission_granted'
   | 'permission_denied'
+  | 'group_create'
+  | 'group_update'
+  | 'group_delete'
+  | 'group_broadcast'
+  | 'group_created'
+  | 'group_updated'
+  | 'group_deleted'
   | 'error';
 
 export interface WebRTCSignal {

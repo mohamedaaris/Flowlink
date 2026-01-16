@@ -50,11 +50,23 @@ See [ANDROID_SETUP.md](ANDROID_SETUP.md) for complete testing checklist.
 
 - **Session-Based**: Temporary connections via QR code or 6-digit key
 - **Device Tiles**: Visual representation of connected devices
+- **Device Groups**: Group multiple devices and broadcast content to all at once (like WhatsApp groups)
 - **Intent Router**: Drag & drop interprets intent (file, media, prompt, link)
 - **Continuity**: Sync state (media timestamp, clipboard, file position)
 - **Privacy First**: Explicit permissions, read-only defaults, auto-expiry
 
 ## MVP Scope
 
-Phone ↔ Laptop only. Includes session management, drag & drop, file transfer, media continuation, and prompt handoff.
+Phone ↔ Laptop only. Includes session management, drag & drop, file transfer, media continuation, prompt handoff, and device groups for broadcasting.
+
+## New Features
+
+### 🎉 Device Groups (NEW!)
+Create groups of devices and broadcast content to all at once:
+- **Create Groups**: Organize devices into named groups
+- **Broadcast**: Drag & drop files, links, or text onto a group tile
+- **Auto-Open**: Content opens on all devices in the group
+- **Visual UI**: Color-coded tiles with device status
+
+📖 **Learn More**: See [GROUP_QUICK_START.md](GROUP_QUICK_START.md) for usage guide
 

@@ -1,9 +1,12 @@
 package com.flowlink.app
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -16,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import com.flowlink.app.BuildConfig
 import com.flowlink.app.databinding.ActivityMainBinding
 import com.flowlink.app.model.Intent as FlowIntent
+import com.flowlink.app.service.ClipboardSyncService
 import com.flowlink.app.service.SessionManager
 import com.flowlink.app.service.WebSocketManager
 import com.flowlink.app.ui.DeviceTilesFragment
@@ -32,6 +36,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     lateinit var sessionManager: SessionManager
     lateinit var webSocketManager: WebSocketManager
+    private var clipboardSyncEnabled = false
+    
+    private val clipboardReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ClipboardSyncService.ACTION_CLIPBOARD_CHANGED) {
+                val text = intent.getStringExtra(ClipboardSyncService.EXTRA_TEXT)
+                if (text != null) {
+                    sendClipboardToAllDevices(text)
+                }
+            }
+        }
+    }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -58,6 +74,13 @@ class MainActivity : AppCompatActivity() {
         // Initialize managers
         sessionManager = SessionManager(this)
         webSocketManager = WebSocketManager(sessionManager)
+        
+        // Register clipboard receiver
+        val filter = IntentFilter(ClipboardSyncService.ACTION_CLIPBOARD_CHANGED)
+        registerReceiver(clipboardReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        
+        // Start clipboard sync service
+        startClipboardSyncService()
 
         // React to intents received from backend (e.g., links, media, clipboard, files)
         lifecycleScope.launch {
@@ -577,5 +600,81 @@ class MainActivity : AppCompatActivity() {
         
         Toast.makeText(this, "Screen sharing started", Toast.LENGTH_SHORT).show()
         android.util.Log.d("FlowLink", "Sent WebRTC offer for screen sharing")
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(clipboardReceiver)
+        } catch (e: Exception) {
+            // Receiver not registered
+        }
+        stopClipboardSyncService()
+    }
+    
+    private fun startClipboardSyncService() {
+        val serviceIntent = Intent(this, ClipboardSyncService::class.java)
+        startService(serviceIntent)
+        
+        // Enable clipboard sync when in a session
+        val currentCode = sessionManager.getCurrentSessionCode()
+        if (currentCode != null) {
+            enableClipboardSync()
+        }
+    }
+    
+    private fun stopClipboardSyncService() {
+        val serviceIntent = Intent(this, ClipboardSyncService::class.java)
+        stopService(serviceIntent)
+    }
+    
+    fun enableClipboardSync() {
+        clipboardSyncEnabled = true
+        val intent = Intent(this, ClipboardSyncService::class.java)
+        intent.action = ClipboardSyncService.ACTION_ENABLE
+        startService(intent)
+        android.util.Log.d("FlowLink", "📋 Clipboard sync enabled")
+    }
+    
+    fun disableClipboardSync() {
+        clipboardSyncEnabled = false
+        val intent = Intent(this, ClipboardSyncService::class.java)
+        intent.action = ClipboardSyncService.ACTION_DISABLE
+        startService(intent)
+        android.util.Log.d("FlowLink", "📋 Clipboard sync disabled")
+    }
+    
+    private fun sendClipboardToAllDevices(text: String) {
+        android.util.Log.d("FlowLink", "📋 Sending clipboard to all devices: ${text.take(50)}...")
+        
+        lifecycleScope.launch {
+            try {
+                val clipboardJson = org.json.JSONObject().apply {
+                    put("text", text)
+                }
+                
+                val sessionId = sessionManager.getCurrentSessionId()
+                if (sessionId != null) {
+                    webSocketManager.sendMessage(org.json.JSONObject().apply {
+                        put("type", "clipboard_broadcast")
+                        put("sessionId", sessionId)
+                        put("deviceId", sessionManager.getDeviceId())
+                        put("payload", org.json.JSONObject().apply {
+                            put("clipboard", clipboardJson)
+                        })
+                        put("timestamp", System.currentTimeMillis())
+                    }.toString())
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("FlowLink", "Failed to send clipboard", e)
+            }
+        }
+    }
+    
+    fun updateClipboardFromRemote(text: String) {
+        val intent = Intent(this, ClipboardSyncService::class.java)
+        intent.action = ClipboardSyncService.ACTION_UPDATE_CLIPBOARD
+        intent.putExtra(ClipboardSyncService.EXTRA_TEXT, text)
+        startService(intent)
     }
 }

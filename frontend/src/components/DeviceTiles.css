@@ -15,8 +15,9 @@
 }
 
 .device-tiles-header h2 {
-  color: #333;
+  color: #1a1a1a;
   font-size: 1.8rem;
+  font-weight: 700;
 }
 
 .session-info {
@@ -26,8 +27,9 @@
 }
 
 .session-info span {
-  color: #666;
+  color: #4a4a4a;
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .btn-leave {
@@ -50,9 +52,10 @@
 
 .drag-instructions {
   text-align: center;
-  color: #666;
+  color: #4a4a4a;
   margin-bottom: 2rem;
   font-size: 1rem;
+  font-weight: 500;
 }
 
 .drop-area {
@@ -74,7 +77,7 @@
 .no-devices {
   text-align: center;
   padding: 4rem 2rem;
-  color: #999;
+  color: #6a6a6a;
 }
 
 .no-devices p {
@@ -84,7 +87,8 @@
 
 .session-code-hint {
   font-size: 1.2rem;
-  color: #333;
+  color: #1a1a1a;
+  font-weight: 600;
 }
 
 .session-code-hint strong {
@@ -110,8 +114,9 @@
 
 .qr-label {
   margin-bottom: 1rem;
-  color: #666;
+  color: #4a4a4a;
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .qr-container-small {
@@ -126,7 +131,8 @@
 .session-code-display-small {
   margin-top: 1rem;
   font-size: 1rem;
-  color: #333;
+  color: #1a1a1a;
+  font-weight: 500;
 }
 
 .session-code-display-small strong {

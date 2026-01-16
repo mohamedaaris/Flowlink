@@ -359,7 +359,7 @@ export default function DeviceTile({
       </div>
 
       <div className="device-remote-access">
-        <label className="remote-access-toggle">
+        <label className="device-remote-access-toggle">
           <input
             type="checkbox"
             checked={device.permissions.remote_browse || false}

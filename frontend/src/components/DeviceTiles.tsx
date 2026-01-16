@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Session, Device, Intent, IntentType } from '@shared/types';
+import { Session, Device, Intent, IntentType, Group } from '@shared/types';
 import DeviceTile from './DeviceTile';
+import GroupManager from './GroupManager';
+import GroupTile from './GroupTile';
 import IntentRouter from '../services/IntentRouter';
 import WebRTCManager from '../services/WebRTCManager';
 import FileBridge from '../services/FileBridge';
 import ContinuityEngine from '../services/ContinuityEngine';
 import PermissionEngine from '../services/PermissionEngine';
 import MediaDetector from '../services/MediaDetector';
+import { groupService } from '../services/GroupService';
 import './DeviceTiles.css';
 
 interface DeviceTilesProps {
@@ -51,6 +54,7 @@ export default function DeviceTiles({
     console.log('Initial devices:', Array.from(initialDevices.entries()).map(([id, d]) => `${id.substring(0, 8)}...: ${d.name}`));
     return initialDevices;
   });
+  const [groups, setGroups] = useState<Group[]>([]);
   const [draggedItem, setDraggedItem] = useState<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const webrtcManagerRef = useRef<WebRTCManager | null>(null);
@@ -110,11 +114,16 @@ export default function DeviceTiles({
       handleIntentSent
     );
 
+    // Initialize Group Service
+    groupService.initialize(ws, session.id, deviceId);
+    groupService.subscribe(setGroups);
+
     return () => {
       ws.close();
       webrtcManagerRef.current?.cleanup();
       permissionEngineRef.current?.revokeAll();
       mediaDetectorRef.current?.cleanup();
+      groupService.cleanup();
     };
   }, [session.code, deviceId, deviceName, deviceType]);
 
@@ -190,6 +199,22 @@ export default function DeviceTiles({
           setDevices(deviceMap);
           console.log('Updated devices from session_joined:', Array.from(deviceMap.keys()));
         }
+        // Update groups list
+        if (message.payload && message.payload.groups) {
+          groupService.setGroups(message.payload.groups);
+        }
+        break;
+
+      case 'group_created':
+        groupService.addGroup(message.payload.group);
+        break;
+
+      case 'group_updated':
+        groupService.updateGroup(message.payload.group);
+        break;
+
+      case 'group_deleted':
+        groupService.removeGroup(message.payload.groupId);
         break;
     }
   };
@@ -721,6 +746,34 @@ export default function DeviceTiles({
     // Otherwise, let DeviceTile handle it (don't prevent default here)
   };
 
+  const handleGroupDrop = async (groupId: string, intent: Intent) => {
+    if (!intentRouterRef.current) {
+      alert('Intent router not ready. Please refresh the page.');
+      return;
+    }
+
+    const group = groups.find(g => g.id === groupId);
+    if (!group) {
+      alert('Group not found');
+      return;
+    }
+
+    console.log(`Broadcasting ${intent.intent_type} to group "${group.name}"`);
+
+    // Broadcast to group
+    groupService.broadcastToGroup(groupId, intent);
+    
+    const intentTypeNames: Record<string, string> = {
+      'file_handoff': 'File',
+      'media_continuation': 'Media',
+      'link_open': 'Link',
+      'prompt_injection': 'Prompt',
+      'clipboard_sync': 'Text'
+    };
+    const typeName = intentTypeNames[intent.intent_type] || 'Item';
+    console.log(`✅ ${typeName} broadcast to group "${group.name}" (${group.deviceIds.length} devices)`);
+  };
+
   const deviceArray = Array.from(devices.values()).filter(d => d.id !== deviceId);
 
   return (
@@ -746,6 +799,24 @@ export default function DeviceTiles({
             Code: <strong>{session.code}</strong>
           </p>
         </div>
+      )}
+
+      {/* Group Manager */}
+      {deviceArray.length > 0 && (
+        <GroupManager
+          devices={deviceArray}
+          groups={groups}
+          currentDeviceId={deviceId}
+          onCreateGroup={(name, deviceIds, color) => {
+            groupService.createGroup(name, deviceIds, color);
+          }}
+          onUpdateGroup={(groupId, updates) => {
+            groupService.updateGroupDetails(groupId, updates);
+          }}
+          onDeleteGroup={(groupId) => {
+            groupService.deleteGroup(groupId);
+          }}
+        />
       )}
 
       <div className="drag-drop-zone">
@@ -776,6 +847,17 @@ export default function DeviceTiles({
             </div>
           ) : (
             <div className="device-tiles-grid">
+              {/* Group Tiles */}
+              {groups.map((group) => (
+                <GroupTile
+                  key={group.id}
+                  group={group}
+                  devices={deviceArray}
+                  onDrop={handleGroupDrop}
+                />
+              ))}
+              
+              {/* Device Tiles */}
               {deviceArray.map((device) => (
                 <DeviceTile
                   key={device.id}
