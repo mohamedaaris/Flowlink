@@ -89,11 +89,14 @@ class WebSocketManager(private val sessionManager: SessionManager) {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d("FlowLink", "WebSocket connected")
+                Log.d("FlowLink", "  Device ID: ${sessionManager.getDeviceId()}")
+                Log.d("FlowLink", "  Device Name: ${sessionManager.getDeviceName()}")
+                Log.d("FlowLink", "  Session Code: $sessionCode")
                 _connectionState.value = ConnectionState.Connected
 
                 // Only send session_join if we have a code (not for session_create)
                 if (sessionCode.isNotEmpty()) {
-                    sendMessage(JSONObject().apply {
+                    val joinMessage = JSONObject().apply {
                         put("type", "session_join")
                         put("payload", JSONObject().apply {
                             put("code", sessionCode)
@@ -102,7 +105,9 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                             put("deviceType", sessionManager.getDeviceType())
                         })
                         put("timestamp", System.currentTimeMillis())
-                    }.toString())
+                    }
+                    Log.d("FlowLink", "Sending session_join: $joinMessage")
+                    sendMessage(joinMessage.toString())
                 }
             }
 
@@ -116,17 +121,25 @@ class WebSocketManager(private val sessionManager: SessionManager) {
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d("FlowLink", "WebSocket closing: $reason")
+                Log.d("FlowLink", "WebSocket closing")
+                Log.d("FlowLink", "  Code: $code")
+                Log.d("FlowLink", "  Reason: $reason")
+                Log.d("FlowLink", "  Device ID: ${sessionManager.getDeviceId()}")
                 _connectionState.value = ConnectionState.Disconnected
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d("FlowLink", "WebSocket closed: $reason")
+                Log.d("FlowLink", "WebSocket closed")
+                Log.d("FlowLink", "  Code: $code")
+                Log.d("FlowLink", "  Reason: $reason")
+                Log.d("FlowLink", "  Device ID: ${sessionManager.getDeviceId()}")
                 _connectionState.value = ConnectionState.Disconnected
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e("FlowLink", "WebSocket failure", t)
+                Log.e("FlowLink", "  Device ID: ${sessionManager.getDeviceId()}")
+                Log.e("FlowLink", "  Response: $response")
                 _connectionState.value = ConnectionState.Error(t.message ?: "Unknown error")
                 // Treat connection failure during a join attempt as a join error
                 if (_sessionJoinState.value is SessionJoinState.InProgress) {
@@ -225,8 +238,17 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                         name = deviceJson.getString("name"),
                         type = deviceJson.getString("type")
                     )
-                    _deviceConnected.value = deviceInfo
-                    Log.d("FlowLink", "Device connected: ${deviceInfo.name}")
+                    Log.d("FlowLink", "Received device_connected: ${deviceInfo.name} (${deviceInfo.id})")
+                    Log.d("FlowLink", "  Current device ID: ${sessionManager.getDeviceId()}")
+                    Log.d("FlowLink", "  Is self: ${deviceInfo.id == sessionManager.getDeviceId()}")
+                    
+                    // Only emit if it's not the current device
+                    if (deviceInfo.id != sessionManager.getDeviceId()) {
+                        _deviceConnected.value = deviceInfo
+                        Log.d("FlowLink", "  Emitted device_connected event")
+                    } else {
+                        Log.d("FlowLink", "  Skipped (self)")
+                    }
                 }
                 "device_disconnected" -> {
                     Log.d("FlowLink", "Device disconnected")
@@ -274,17 +296,27 @@ class WebSocketManager(private val sessionManager: SessionManager) {
 
                     val devicesArray = payload.optJSONArray("devices")
                     if (devicesArray != null) {
+                        Log.d("FlowLink", "Processing ${devicesArray.length()} devices from session_joined")
                         // Notify about all devices in session
-                        for (i in 0 until devicesArray.length()) {
-                            val deviceJson = devicesArray.getJSONObject(i)
-                            val deviceInfo = DeviceInfo(
-                                id = deviceJson.getString("id"),
-                                name = deviceJson.getString("name"),
-                                type = deviceJson.getString("type")
-                            )
-                            // Only notify about other devices
-                            if (deviceInfo.id != sessionManager.getDeviceId()) {
-                                _deviceConnected.value = deviceInfo
+                        // IMPORTANT: Emit each device separately with a small delay
+                        // so DeviceTilesFragment can collect all of them
+                        scope.launch {
+                            for (i in 0 until devicesArray.length()) {
+                                val deviceJson = devicesArray.getJSONObject(i)
+                                val deviceInfo = DeviceInfo(
+                                    id = deviceJson.getString("id"),
+                                    name = deviceJson.getString("name"),
+                                    type = deviceJson.getString("type")
+                                )
+                                // Only notify about other devices
+                                if (deviceInfo.id != sessionManager.getDeviceId()) {
+                                    Log.d("FlowLink", "Emitting device from session_joined: ${deviceInfo.name} (${deviceInfo.id})")
+                                    _deviceConnected.value = deviceInfo
+                                    // Small delay to ensure each emission is collected
+                                    kotlinx.coroutines.delay(50)
+                                } else {
+                                    Log.d("FlowLink", "Skipping self device: ${deviceInfo.name} (${deviceInfo.id})")
+                                }
                             }
                         }
                     }

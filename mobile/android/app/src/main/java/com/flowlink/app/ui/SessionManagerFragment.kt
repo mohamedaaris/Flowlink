@@ -6,9 +6,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import com.flowlink.app.MainActivity
 import com.flowlink.app.databinding.FragmentSessionManagerBinding
+import kotlinx.coroutines.launch
 
 class SessionManagerFragment : Fragment() {
     private var _binding: FragmentSessionManagerBinding? = null
@@ -40,6 +41,18 @@ class SessionManagerFragment : Fragment() {
                 (activity as? MainActivity)?.joinSession(code)
             } else {
                 Toast.makeText(requireContext(), "Please enter a 6-digit code", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        binding.btnClearSession.setOnClickListener {
+            val mainActivity = activity as? MainActivity
+            if (mainActivity != null) {
+                lifecycleScope.launch {
+                    mainActivity.sessionManager.leaveSession()
+                    mainActivity.webSocketManager.disconnect()
+                    Toast.makeText(requireContext(), "Session cleared", Toast.LENGTH_SHORT).show()
+                    android.util.Log.d("FlowLink", "Session manually cleared by user")
+                }
             }
         }
     }

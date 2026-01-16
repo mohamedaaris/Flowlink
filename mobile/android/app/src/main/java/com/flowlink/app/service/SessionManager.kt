@@ -17,14 +17,36 @@ import java.util.UUID
 class SessionManager(private val context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("flowlink", Context.MODE_PRIVATE)
     private val deviceId: String = getOrCreateDeviceId()
-    private val deviceName: String = android.os.Build.MODEL
+    private val deviceName: String = "${android.os.Build.MODEL} (${android.os.Build.DEVICE})"
     private val deviceType: String = "phone"
+    
+    init {
+        android.util.Log.d("FlowLink", "SessionManager initialized")
+        android.util.Log.d("FlowLink", "  Device ID: $deviceId")
+        android.util.Log.d("FlowLink", "  Device Name: $deviceName")
+        android.util.Log.d("FlowLink", "  Device Type: $deviceType")
+    }
 
     private fun getOrCreateDeviceId(): String {
         val savedId = prefs.getString("device_id", null)
-        return savedId ?: UUID.randomUUID().toString().also {
-            prefs.edit().putString("device_id", it).apply()
+        if (savedId != null) {
+            android.util.Log.d("FlowLink", "Using existing device ID: $savedId")
+            return savedId
         }
+        
+        // Generate a more unique device ID using multiple factors
+        val androidId = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        )
+        val timestamp = System.currentTimeMillis()
+        val random = UUID.randomUUID().toString().substring(0, 8)
+        
+        // Combine Android ID, timestamp, and random string for uniqueness
+        val newId = "$androidId-$timestamp-$random"
+        prefs.edit().putString("device_id", newId).apply()
+        android.util.Log.d("FlowLink", "Generated NEW device ID: $newId")
+        return newId
     }
 
     suspend fun createSession(): Session = withContext(Dispatchers.IO) {

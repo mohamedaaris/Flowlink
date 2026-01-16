@@ -58,5 +58,14 @@
         android:layout_height="wrap_content"
         android:text="Join Session" />
 
+    <Button
+        android:id="@+id/btn_clear_session"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Clear Saved Session"
+        android:layout_marginTop="32dp"
+        android:backgroundTint="#FF6B6B"
+        android:textColor="#FFFFFF" />
+
 </LinearLayout>
 

@@ -30,7 +30,7 @@ import java.io.File
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private lateinit var sessionManager: SessionManager
+    lateinit var sessionManager: SessionManager
     lateinit var webSocketManager: WebSocketManager
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -111,10 +111,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // If we still have a session code but the WebSocket was closed (e.g. after opening a link),
-        // automatically reconnect so subsequent URL/file drops keep working.
+        // Check if we have an active session and should show DeviceTiles
         val currentCode = sessionManager.getCurrentSessionCode()
+        val currentSessionId = sessionManager.getCurrentSessionId()
         val connectionState = webSocketManager.connectionState.value
+        
+        android.util.Log.d("FlowLink", "onResume: code=$currentCode, sessionId=$currentSessionId, connectionState=$connectionState")
+        
+        // If we have a session but are showing SessionManagerFragment, navigate to DeviceTiles
+        val currentFragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+        if (currentCode != null && currentSessionId != null && currentFragment is SessionManagerFragment) {
+            android.util.Log.d("FlowLink", "Restoring DeviceTiles view for existing session")
+            showDeviceTiles(currentSessionId)
+        }
+        
+        // If we have a session but WebSocket is disconnected, reconnect
         if (currentCode != null && 
             (connectionState is WebSocketManager.ConnectionState.Disconnected || 
              connectionState is WebSocketManager.ConnectionState.Error)) {
