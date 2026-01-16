@@ -148,6 +148,9 @@ class WebSocketManager(private val sessionManager: SessionManager) {
     }
 
     fun sendIntent(intent: Intent, targetDeviceId: String) {
+        val currentSessionId = sessionManager.getCurrentSessionId()
+        Log.d("FlowLink", "Sending intent ${intent.intentType} to $targetDeviceId with sessionId: $currentSessionId")
+        
         val intentPayload = JSONObject()
         intent.payload?.forEach { (key, value) ->
             // Try to parse as JSON if it's a JSON string, otherwise use as-is
@@ -162,7 +165,7 @@ class WebSocketManager(private val sessionManager: SessionManager) {
         
         val message = JSONObject().apply {
             put("type", "intent_send")
-            put("sessionId", sessionManager.getCurrentSessionId())
+            put("sessionId", currentSessionId)
             put("deviceId", sessionManager.getDeviceId())
             put("payload", JSONObject().apply {
                 put("intent", JSONObject().apply {
@@ -178,6 +181,7 @@ class WebSocketManager(private val sessionManager: SessionManager) {
             put("timestamp", System.currentTimeMillis())
         }.toString()
 
+        Log.d("FlowLink", "Intent message: $message")
         sendMessage(message)
     }
 
@@ -236,13 +240,15 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                     // Clear stale device_connected so the QR screen doesn't immediately navigate
                     resetDeviceConnectedEvent()
 
-                    // Store session info
+                    // CRITICAL FIX: Update SessionManager with backend's sessionId immediately
+                    // This ensures all future intent_send messages use the correct sessionId
                     scope.launch {
                         sessionManager.setSessionInfo(sessionId, code)
+                        Log.d("FlowLink", "Updated session info from session_created: id=$sessionId, code=$code")
                     }
                     
                     _sessionCreated.value = SessionCreatedEvent(sessionId, code, expiresAt)
-                    Log.d("FlowLink", "Session created: $code")
+                    Log.d("FlowLink", "Session created: $code with sessionId: $sessionId")
                 }
                 "session_joined" -> {
                     val payload = json.getJSONObject("payload")

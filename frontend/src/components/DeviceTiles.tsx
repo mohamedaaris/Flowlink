@@ -30,12 +30,25 @@ export default function DeviceTiles({
   const [devices, setDevices] = useState<Map<string, Device>>(() => {
     // Initialize with devices from session, excluding self
     const initialDevices = new Map<string, Device>();
+    console.log('🚀 DeviceTiles initializing');
+    console.log('Session ID:', session.id);
+    console.log('Session code:', session.code);
+    console.log('Session createdBy:', session.createdBy);
+    console.log('Session devices size:', session.devices.size);
+    console.log('Current deviceId (self):', deviceId);
+    
     session.devices.forEach((device, id) => {
+      console.log(`Device in session: ${id} = ${device.name} (${device.type})`);
       if (id !== deviceId) {
+        console.log(`  ✅ Adding to initial map`);
         initialDevices.set(id, device);
+      } else {
+        console.log(`  ⏭️ Skipping (self)`);
       }
     });
-    console.log('Initial devices map:', Array.from(initialDevices.keys()));
+    
+    console.log('Initial devices map size:', initialDevices.size);
+    console.log('Initial devices:', Array.from(initialDevices.entries()).map(([id, d]) => `${id.substring(0, 8)}...: ${d.name}`));
     return initialDevices;
   });
   const [draggedItem, setDraggedItem] = useState<any>(null);
@@ -182,6 +195,12 @@ export default function DeviceTiles({
   };
 
   const handleIncomingIntent = async (intent: Intent, sourceDevice: string) => {
+    console.log('📨 Incoming intent');
+    console.log('  Intent type:', intent.intent_type);
+    console.log('  Source device ID:', sourceDevice);
+    console.log('  Current devices map size:', devices.size);
+    console.log('  Devices in map:', Array.from(devices.entries()).map(([id, d]) => `${id.substring(0, 8)}...: ${d.name}`));
+    
     // Show permission request UI
     const granted = await requestPermission(intent, sourceDevice);
     
@@ -305,7 +324,20 @@ export default function DeviceTiles({
 
   const requestPermission = (intent: Intent, sourceDevice: string): Promise<boolean> => {
     return new Promise((resolve) => {
+      console.log('🔐 Requesting permission');
+      console.log('  Source device ID:', sourceDevice);
+      console.log('  Looking up in devices map...');
+      
       const device = devices.get(sourceDevice);
+      console.log('  Device found:', device ? `${device.name} (${device.type})` : 'NOT FOUND ❌');
+      
+      if (!device) {
+        console.log('  Available devices in map:');
+        devices.forEach((d, id) => {
+          console.log(`    ${id.substring(0, 8)}...: ${d.name} (${d.type})`);
+        });
+      }
+      
       const deviceName = device?.name || 'Unknown Device';
       
       const message = getPermissionMessage(intent, deviceName);

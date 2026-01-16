@@ -90,31 +90,49 @@ export default function SessionManager({
         break;
 
       case 'session_joined':
+        console.log('📥 SessionManager received session_joined');
+        console.log('  Payload:', message.payload);
+        console.log('  Devices in payload:', message.payload.devices);
+        
         const joinedSession: Session = {
           id: message.payload.sessionId,
-          code: createdSession?.code || '',
+          code: sessionCode || '',  // Use the code we tried to join with
           createdBy: message.payload.devices[0]?.id || '',
           createdAt: Date.now(),
           expiresAt: Date.now() + 3600000, // 1 hour
           devices: new Map(
-            message.payload.devices.map((d: any) => [
-              d.id,
-              {
-                id: d.id,
-                name: d.name,
-                type: d.type,
-                online: d.online,
-                permissions: d.permissions,
-                joinedAt: d.joinedAt,
-                lastSeen: Date.now(),
-              },
-            ])
+            message.payload.devices.map((d: any) => {
+              console.log(`  Mapping device: ${d.id} = ${d.name} (${d.type})`);
+              return [
+                d.id,
+                {
+                  id: d.id,
+                  name: d.name,
+                  type: d.type,
+                  online: d.online,
+                  permissions: d.permissions,
+                  joinedAt: d.joinedAt,
+                  lastSeen: Date.now(),
+                },
+              ];
+            })
           ),
         };
+        
+        console.log('  Created session object:');
+        console.log('    ID:', joinedSession.id);
+        console.log('    Code:', joinedSession.code);
+        console.log('    Devices size:', joinedSession.devices.size);
+        joinedSession.devices.forEach((d, id) => {
+          console.log(`      ${id.substring(0, 8)}...: ${d.name} (${d.type})`);
+        });
+        
         // Store session info for RemoteAccess component
         sessionStorage.setItem('sessionId', joinedSession.id);
         sessionStorage.setItem('sessionCode', joinedSession.code);
         sessionStorage.setItem('deviceId', deviceId);
+        
+        console.log('  Calling onSessionJoined...');
         onSessionJoined(joinedSession);
         break;
 
