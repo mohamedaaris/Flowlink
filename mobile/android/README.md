@@ -18,8 +18,8 @@ Android app for FlowLink cross-device continuity.
 ## Configuration
 
 Update `WS_URL` in `WebSocketManager.kt`:
-- Emulator: `ws://10.0.2.2:8080`
-- Physical device: `ws://YOUR_COMPUTER_IP:8080`
+- Production: `wss://flowlink-production.up.railway.app`
+- Local development: `ws://10.0.2.2:8080` (emulator) or `ws://YOUR_COMPUTER_IP:8080` (physical device)
 
 ## Permissions
 

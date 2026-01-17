@@ -61,11 +61,10 @@ class WebSocketManager(private val sessionManager: SessionManager) {
         val type: String
     )
 
-    // IMPORTANT: Change this based on your setup
-    // For Android Emulator: "ws://10.0.2.2:8080"
-    // For Physical Device: "ws://YOUR_COMPUTER_IP:8080" (e.g., "ws://192.168.1.100:8080")
-    // Find your IP: Windows PowerShell -> ipconfig -> IPv4 Address
-    private val WS_URL = "ws://192.168.0.109:8080" // Android emulator localhost
+    // IMPORTANT: Railway production backend
+    // For Railway production: "wss://flowlink-production.up.railway.app"
+    // For local development: "ws://10.0.2.2:8080" (emulator) or "ws://YOUR_COMPUTER_IP:8080" (physical device)
+    private val WS_URL = "wss://flowlink-production.up.railway.app"
 
     fun connect(sessionCode: String) {
         if (_connectionState.value == ConnectionState.Connected) {

@@ -251,9 +251,9 @@ export default class RemoteDesktopManager {
       if (message.type === 'webrtc_offer') {
         // Viewer receives offer from source
         console.log('Received WebRTC offer');
-        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
-        const answer = await this.peerConnection.createAnswer();
-        await this.peerConnection.setLocalDescription(answer);
+        await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(data));
+        const answer = await this.peerConnection!.createAnswer();
+        await this.peerConnection!.setLocalDescription(answer);
 
         this.ws.send(JSON.stringify({
           type: 'webrtc_answer',
@@ -269,11 +269,11 @@ export default class RemoteDesktopManager {
       } else if (message.type === 'webrtc_answer') {
         // Source receives answer from viewer
         console.log('Received WebRTC answer');
-        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
+        await this.peerConnection!.setRemoteDescription(new RTCSessionDescription(data));
       } else if (message.type === 'webrtc_ice_candidate') {
         // Handle ICE candidate
         if (data) {
-          await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
+          await this.peerConnection!.addIceCandidate(new RTCIceCandidate(data));
         }
       }
     } catch (error) {

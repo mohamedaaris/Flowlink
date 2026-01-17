@@ -1,10 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import RemoteDesktopManager from '../services/RemoteDesktopManager';
 import { generateDeviceId } from '@shared/utils';
+import { SIGNALING_WS_URL } from '../config/signaling';
 import './RemoteAccess.css';
-
-const WS_URL = 'ws://localhost:8080';
 
 export default function RemoteAccess() {
   const { deviceId } = useParams<{ deviceId: string }>();
@@ -61,12 +60,12 @@ export default function RemoteAccess() {
         console.log('RemoteAccess: Source device (sharing):', deviceId, 'Viewer device:', deviceIdRef.current);
 
         // Connect WebSocket with timeout handling
-        let connectionTimeout: NodeJS.Timeout;
-        const ws = new WebSocket(WS_URL);
+        let connectionTimeout: number;
+        const ws = new WebSocket(SIGNALING_WS_URL);
         wsRef.current = ws;
 
         // Set connection timeout
-        connectionTimeout = setTimeout(() => {
+        connectionTimeout = window.setTimeout(() => {
           if (ws.readyState === WebSocket.CONNECTING) {
             ws.close();
             setError('Connection timeout. Make sure the backend server is running on port 8080.');

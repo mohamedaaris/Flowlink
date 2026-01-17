@@ -13,9 +13,6 @@ interface DeviceTileProps {
 
 export default function DeviceTile({
   device,
-  draggedItem,
-  onDragStart,
-  onDragEnd,
   onDrop,
 }: DeviceTileProps) {
   const [isDragOver, setIsDragOver] = useState(false);

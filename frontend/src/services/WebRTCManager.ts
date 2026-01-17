@@ -1,4 +1,4 @@
-import { Intent, WebRTCSignal } from '@shared/types';
+import { Intent } from '@shared/types';
 
 /**
  * WebRTC Manager
@@ -230,7 +230,7 @@ export default class WebRTCManager {
    * Cleanup connections
    */
   cleanup(): void {
-    for (const [deviceId, peer] of this.peers.entries()) {
+    for (const [_deviceId, peer] of this.peers.entries()) {
       peer.close();
     }
     this.peers.clear();

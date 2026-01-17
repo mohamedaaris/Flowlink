@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Session, Device, Intent, IntentType, Group } from '@shared/types';
+import { Session, Device, Intent, Group } from '@shared/types';
 import DeviceTile from './DeviceTile';
 import GroupManager from './GroupManager';
 import GroupTile from './GroupTile';
@@ -11,6 +11,7 @@ import ContinuityEngine from '../services/ContinuityEngine';
 import PermissionEngine from '../services/PermissionEngine';
 import MediaDetector from '../services/MediaDetector';
 import { groupService } from '../services/GroupService';
+import { SIGNALING_WS_URL } from '../config/signaling';
 import './DeviceTiles.css';
 
 interface DeviceTilesProps {
@@ -20,8 +21,6 @@ interface DeviceTilesProps {
   deviceType: 'phone' | 'laptop' | 'desktop' | 'tablet';
   onLeaveSession: () => void;
 }
-
-const WS_URL = 'ws://localhost:8080';
 
 export default function DeviceTiles({
   session,
@@ -71,7 +70,7 @@ export default function DeviceTiles({
     sessionStorage.setItem('deviceId', deviceId);
     
     // Initialize WebSocket connection
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(SIGNALING_WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -234,7 +233,7 @@ export default function DeviceTiles({
       grantPermissionForIntent(intent, sourceDevice);
       
       // Process intent
-      await processIntent(intent);
+      await processIntent(intent, sourceDevice);
       
       // Send acknowledgment
       if (wsRef.current) {
@@ -412,7 +411,7 @@ export default function DeviceTiles({
     }
   };
 
-  const processIntent = async (intent: Intent) => {
+  const processIntent = async (intent: Intent, sourceDevice: string) => {
     switch (intent.intent_type) {
       case 'file_handoff':
         await handleFileHandoff(intent);
@@ -441,8 +440,20 @@ export default function DeviceTiles({
     // If file data is included, download it
     if (intent.payload.file.data) {
       // Convert array to Uint8Array
-      const uint8Array = new Uint8Array(intent.payload.file.data);
-      const blob = new Blob([uint8Array], { type: intent.payload.file.type });
+      let uint8Array: Uint8Array;
+      if (intent.payload.file.data instanceof ArrayBuffer) {
+        uint8Array = new Uint8Array(intent.payload.file.data);
+      } else if (intent.payload.file.data instanceof Blob) {
+        // For Blob, we need to read it as ArrayBuffer first
+        const arrayBuffer = await intent.payload.file.data.arrayBuffer();
+        uint8Array = new Uint8Array(arrayBuffer);
+      } else {
+        // It's a number array
+        uint8Array = new Uint8Array(intent.payload.file.data);
+      }
+      const arrayBuffer = new ArrayBuffer(uint8Array.length);
+      new Uint8Array(arrayBuffer).set(uint8Array);
+      const blob = new Blob([arrayBuffer], { type: intent.payload.file.type });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -463,7 +474,7 @@ export default function DeviceTiles({
             if (newWindow) {
               newWindow.document.write(`
                 <html>
-                  <head><title>${intent.payload.file.name}</title></head>
+                  <head><title>${intent.payload.file?.name || 'File'}</title></head>
                   <body style="font-family:monospace;padding:20px;white-space:pre-wrap;">${e.target?.result}</body>
                 </html>
               `);
@@ -482,8 +493,20 @@ export default function DeviceTiles({
     
     // If file data is included, create blob URL
     if (intent.payload.file && intent.payload.file.data) {
-      const uint8Array = new Uint8Array(intent.payload.file.data);
-      const blob = new Blob([uint8Array], { type: intent.payload.file.type });
+      let uint8Array: Uint8Array;
+      if (intent.payload.file.data instanceof ArrayBuffer) {
+        uint8Array = new Uint8Array(intent.payload.file.data);
+      } else if (intent.payload.file.data instanceof Blob) {
+        // For Blob, we need to read it as ArrayBuffer first
+        const arrayBuffer = await intent.payload.file.data.arrayBuffer();
+        uint8Array = new Uint8Array(arrayBuffer);
+      } else {
+        // It's a number array
+        uint8Array = new Uint8Array(intent.payload.file.data);
+      }
+      const arrayBuffer = new ArrayBuffer(uint8Array.length);
+      new Uint8Array(arrayBuffer).set(uint8Array);
+      const blob = new Blob([arrayBuffer], { type: intent.payload.file.type });
       const blobUrl = URL.createObjectURL(blob);
       
       // Create video/audio element to play with timestamp
@@ -716,11 +739,6 @@ export default function DeviceTiles({
 
   const handleDragEnd = () => {
     setDraggedItem(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
   };
 
   const handleLeaveSession = () => {

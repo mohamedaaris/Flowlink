@@ -10,7 +10,8 @@ export type IntentType =
   | 'media_continuation'
   | 'link_open'
   | 'prompt_injection'
-  | 'clipboard_sync';
+  | 'clipboard_sync'
+  | 'remote_access_request';
 
 export type PermissionType = 
   | 'files'
@@ -71,7 +72,7 @@ export interface IntentPayload {
     name: string;
     size: number;
     type: string;
-    data?: ArrayBuffer | Blob;
+    data?: ArrayBuffer | Blob | number[];
     path?: string; // For remote file access
   };
   
@@ -100,6 +101,12 @@ export interface IntentPayload {
   clipboard?: {
     text: string;
     html?: string;
+  };
+  
+  // Remote access request
+  request?: {
+    action: 'start_screen_share' | 'stop_screen_share';
+    viewerDeviceId?: string;
   };
 }
 

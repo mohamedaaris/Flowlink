@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Session } from '@shared/types';
+import { SIGNALING_WS_URL } from '../config/signaling';
 import './SessionManager.css';
 
 interface SessionManagerProps {
@@ -10,8 +11,6 @@ interface SessionManagerProps {
   onSessionCreated: (session: Session) => void;
   onSessionJoined: (session: Session) => void;
 }
-
-const WS_URL = 'ws://localhost:8080';
 
 export default function SessionManager({
   deviceId,
@@ -36,7 +35,7 @@ export default function SessionManager({
 
   const connectWebSocket = (): Promise<WebSocket> => {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(SIGNALING_WS_URL);
       
       ws.onopen = () => {
         console.log('WebSocket connected');

@@ -1,4 +1,4 @@
-import { PermissionType, PermissionSet, Device } from '@shared/types';
+import { PermissionType, PermissionSet } from '@shared/types';
 
 /**
  * Permission Engine

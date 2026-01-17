@@ -1,4 +1,4 @@
-import { Intent, IntentType, IntentPayload } from '@shared/types';
+import { Intent } from '@shared/types';
 import WebRTCManager from './WebRTCManager';
 
 /**

@@ -120,8 +120,8 @@ export default class FileBridge {
    * Send a file chunk via WebRTC
    */
   private async sendChunk(
-    transferId: string,
-    chunkIndex: number,
+    _transferId: string,
+    _chunkIndex: number,
     chunk: ArrayBuffer,
     targetDeviceId: string
   ): Promise<void> {
@@ -129,14 +129,6 @@ export default class FileBridge {
     // For now, we'll use the WebRTCManager's sendIntent as a fallback
     // In production, implement dedicated binary data channel transfer
     
-    const message = {
-      type: 'file_chunk',
-      transferId,
-      chunkIndex,
-      chunk: Array.from(new Uint8Array(chunk)), // Convert to array for JSON
-      isLast: false,
-    };
-
     // This is a simplified version - in production, use binary data channels
     await this.webrtcManager.sendIntent({
       intent_type: 'file_handoff',
@@ -159,7 +151,7 @@ export default class FileBridge {
    * Send transfer complete notification
    */
   private async sendTransferComplete(
-    transferId: string,
+    _transferId: string,
     targetDeviceId: string
   ): Promise<void> {
     // Notify target device that transfer is complete
@@ -194,8 +186,8 @@ export default class FileBridge {
    * Browse remote device filesystem (sandboxed)
    */
   async browseRemoteFilesystem(
-    targetDeviceId: string,
-    path: string = '/'
+    _targetDeviceId: string,
+    _path: string = '/'
   ): Promise<FileSystemEntry[]> {
     // Request file listing from remote device
     // This would require a dedicated API on the device agent

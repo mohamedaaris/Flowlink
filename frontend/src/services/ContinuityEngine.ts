@@ -171,7 +171,7 @@ export default class ContinuityEngine {
   /**
    * Enable clipboard monitoring (sync on change)
    */
-  enableClipboardSync(targetDeviceId: string): void {
+  enableClipboardSync(_targetDeviceId: string): void {
     this.clipboardSyncEnabled = true;
     // Note: Browser security prevents monitoring clipboard changes
     // This would need to be triggered manually or via user action
@@ -208,7 +208,7 @@ export default class ContinuityEngine {
   async syncFilePosition(
     filePath: string,
     position: FilePosition,
-    targetDeviceId: string
+    _targetDeviceId: string
   ): Promise<void> {
     // This would be part of a file handoff intent
     // Position info included in file metadata

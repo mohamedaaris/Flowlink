@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import SessionManager from './components/SessionManager';
 import DeviceTiles from './components/DeviceTiles';
@@ -12,7 +12,7 @@ function App() {
   const [deviceId] = useState(() => generateDeviceId());
   const [deviceName] = useState(() => {
     // Try to get device name from browser
-    return navigator.userAgentData?.platform || 'Laptop';
+    return (navigator as any).userAgentData?.platform || 'Laptop';
   });
 
   return (
