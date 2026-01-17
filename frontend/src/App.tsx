@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import SessionManager from './components/SessionManager';
 import DeviceTiles from './components/DeviceTiles';
 import RemoteAccess from './components/RemoteAccess';
+import DownloadPage from './components/DownloadPage';
 import { Session } from '@shared/types';
 import { generateDeviceId } from '@shared/utils';
 import './App.css';
@@ -25,6 +26,10 @@ function App() {
 
         <main className="app-main">
           <Routes>
+            <Route
+              path="/download"
+              element={<DownloadPage />}
+            />
             <Route
               path="/remote/:deviceId"
               element={<RemoteAccess />}

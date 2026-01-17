@@ -1,0 +1,130 @@
+.download-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.download-container {
+  max-width: 600px;
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+.download-container h1 {
+  text-align: center;
+  color: #333;
+  margin-bottom: 2rem;
+  font-size: 2.5rem;
+}
+
+.version-info {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.version-info h2 {
+  color: #667eea;
+  margin-bottom: 0.5rem;
+}
+
+.release-date {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.download-button-container {
+  text-align: center;
+  margin: 2rem 0;
+}
+
+.download-button {
+  display: inline-block;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem 2rem;
+  border-radius: 50px;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 1.1rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.download-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+}
+
+.installation-guide,
+.system-requirements,
+.release-notes {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border-left: 4px solid #667eea;
+}
+
+.installation-guide h3,
+.system-requirements h3,
+.release-notes h3 {
+  color: #333;
+  margin-bottom: 1rem;
+}
+
+.installation-guide ol {
+  padding-left: 1.5rem;
+}
+
+.installation-guide li,
+.system-requirements li {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.qr-section {
+  text-align: center;
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #eee;
+}
+
+.qr-placeholder {
+  margin-top: 1rem;
+  padding: 2rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 2px dashed #ddd;
+}
+
+.loading,
+.no-release {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.release-body p {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .download-page {
+    padding: 1rem;
+  }
+  
+  .download-container {
+    padding: 1.5rem;
+  }
+  
+  .download-container h1 {
+    font-size: 2rem;
+  }
+}
