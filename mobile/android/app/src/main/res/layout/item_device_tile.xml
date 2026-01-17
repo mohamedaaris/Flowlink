@@ -48,6 +48,40 @@
             android:textColor="@android:color/darker_gray"
             android:layout_marginTop="4dp" />
 
+        <!-- Action buttons section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="12dp"
+            android:gravity="end">
+
+            <Button
+                android:id="@+id/btn_browse_files"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="📁 Browse Files"
+                android:textSize="12sp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:background="@drawable/button_browse_files"
+                android:textColor="@android:color/white"
+                android:layout_marginEnd="8dp"
+                style="?android:attr/buttonStyleSmall" />
+
+            <TextView
+                android:id="@+id/tv_tap_hint"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Tap tile to send clipboard"
+                android:textSize="10sp"
+                android:textColor="@android:color/darker_gray"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="8dp" />
+
+        </LinearLayout>
+
     </LinearLayout>
 
 </androidx.cardview.widget.CardView>

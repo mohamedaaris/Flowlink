@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import { createServer } from 'http';
 
 // Session utilities (inline for Node.js compatibility)
 function generateSessionCode() {
@@ -28,6 +29,7 @@ const SESSION_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
  */
 
 const PORT = process.env.PORT || 8080;
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // In-memory session store (for MVP)
 // In production, use Redis or similar
@@ -36,9 +38,35 @@ const sessions = new Map();
 // WebSocket connections by device ID
 const deviceConnections = new Map();
 
-const wss = new WebSocketServer({ port: PORT });
+// Create HTTP server for health checks
+const server = createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy', 
+      sessions: sessions.size,
+      connections: deviceConnections.size,
+      uptime: process.uptime()
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+});
 
-console.log(`FlowLink backend server running on ws://localhost:${PORT}`);
+const wss = new WebSocketServer({ server });
+
+server.listen(PORT, () => {
+  console.log(`FlowLink backend server running on port ${PORT}`);
+  console.log(`Environment: ${NODE_ENV}`);
+  console.log(`Server ready for WebSocket connections`);
+  console.log(`Health check available at /health`);
+  
+  // Health check for Railway
+  if (NODE_ENV === 'production') {
+    console.log('Production mode: Railway deployment detected');
+  }
+});
 
 wss.on('connection', (ws, req) => {
   let deviceId = null;

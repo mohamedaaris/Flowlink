@@ -128,9 +128,11 @@ class DeviceTilesFragment : Fragment() {
 
         // Setup RecyclerView
         binding.rvDevices.layoutManager = LinearLayoutManager(requireContext())
-        deviceAdapter = DeviceTileAdapter(emptyList()) { device ->
-            handleDeviceTileClick(device)
-        }
+        deviceAdapter = DeviceTileAdapter(
+            devices = emptyList(),
+            onDeviceClick = { device -> handleDeviceTileClick(device) },
+            onBrowseFilesClick = { device -> handleBrowseFilesClick(device) }
+        )
         binding.rvDevices.adapter = deviceAdapter
 
         // Show session info
@@ -204,9 +206,11 @@ class DeviceTilesFragment : Fragment() {
     }
 
     private fun updateDeviceList() {
-        deviceAdapter = DeviceTileAdapter(connectedDevices.values.toList()) { device ->
-            handleDeviceTileClick(device)
-        }
+        deviceAdapter = DeviceTileAdapter(
+            devices = connectedDevices.values.toList(),
+            onDeviceClick = { device -> handleDeviceTileClick(device) },
+            onBrowseFilesClick = { device -> handleBrowseFilesClick(device) }
+        )
         binding.rvDevices.adapter = deviceAdapter
     }
 
@@ -214,7 +218,7 @@ class DeviceTilesFragment : Fragment() {
      * When the user taps a device tile on the phone:
      * - If clipboard has a recent URL, send it as a link/media intent and auto-open on laptop.
      * - If clipboard has text, send it as clipboard_sync.
-     * - If clipboard is empty or unusable, open a file picker and send the chosen file/media.
+     * - If clipboard is empty, show a message to use the browse button instead.
      */
     private fun handleDeviceTileClick(device: Device) {
         val ctx = requireContext()
@@ -300,20 +304,42 @@ class DeviceTilesFragment : Fragment() {
                     Toast.LENGTH_SHORT
                 ).show()
             } else {
-                // No usable clipboard text: fall back to picking a file/media to send.
-                pendingFileTargetDeviceId = device.id
+                // No clipboard content: suggest using the browse button
                 Toast.makeText(
                     ctx,
-                    "Choose a file or media to send to ${device.name}",
-                    Toast.LENGTH_SHORT
+                    "Clipboard is empty. Use the 📁 Browse Files button to send files to ${device.name}",
+                    Toast.LENGTH_LONG
                 ).show()
-                // Allow any type; laptop side will detect and open appropriately.
-                pickFileLauncher.launch(arrayOf("*/*"))
             }
         } catch (e: Exception) {
             android.util.Log.e("FlowLink", "Failed to handle device tile click", e)
             Toast.makeText(ctx, "Failed to send: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    /**
+     * When the user clicks the "Browse Files" button:
+     * - Open file picker to choose any file/media to send to the device.
+     */
+    private fun handleBrowseFilesClick(device: Device) {
+        val ctx = requireContext()
+        
+        if (sessionManager == null) {
+            Toast.makeText(ctx, "Not ready to send yet. Try again.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Set the target device for the file picker result
+        pendingFileTargetDeviceId = device.id
+        
+        Toast.makeText(
+            ctx,
+            "Choose a file or media to send to ${device.name}",
+            Toast.LENGTH_SHORT
+        ).show()
+        
+        // Open file picker - allow any type; laptop side will detect and open appropriately
+        pickFileLauncher.launch(arrayOf("*/*"))
     }
 
     private fun isHttpUrl(text: String): Boolean {
