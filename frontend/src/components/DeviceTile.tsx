@@ -18,23 +18,27 @@ export default function DeviceTile({
   const [isDragOver, setIsDragOver] = useState(false);
   const [clipboardText, setClipboardText] = useState('');
 
-  const extractFileFromEvent = (e: React.DragEvent): File | null => {
+  const extractFilesFromEvent = (e: React.DragEvent): File[] => {
+    const files: File[] = [];
+    
+    // Check dataTransfer.files first (most reliable for file drops)
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      return e.dataTransfer.files[0];
+      files.push(...Array.from(e.dataTransfer.files));
     }
-
+    
+    // Also check dataTransfer.items for additional files
     if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       for (const item of Array.from(e.dataTransfer.items)) {
         if (item.kind === 'file') {
           const file = item.getAsFile();
-          if (file) {
-            return file;
+          if (file && !files.some(f => f.name === file.name && f.size === file.size)) {
+            files.push(file);
           }
         }
       }
     }
-
-    return null;
+    
+    return files;
   };
 
   const normalizeUrl = (text: string): string | null => {
@@ -78,6 +82,12 @@ export default function DeviceTile({
     console.log('File types:', Array.from(e.dataTransfer.files).map(f => f.type));
     console.log('Text data:', e.dataTransfer.getData('text/plain'));
     console.log('HTML data:', e.dataTransfer.getData('text/html'));
+
+    // Show immediate feedback for multiple files
+    const fileCount = e.dataTransfer.files.length;
+    if (fileCount > 1) {
+      console.log(`📦 Multiple files detected: ${fileCount} files`);
+    }
 
     try {
       const intent = await createIntentFromDrop(e);
@@ -149,26 +159,65 @@ export default function DeviceTile({
   const createIntentFromDrop = async (e: React.DragEvent): Promise<Intent | null> => {
     console.log('createIntentFromDrop called');
     
-    // Check for files (OS file drags sometimes populate items but not files array)
-    const droppedFile = extractFileFromEvent(e);
-    if (droppedFile) {
-      console.log('File detected:', droppedFile.name, droppedFile.type);
-      const file = droppedFile;
+    // Check for files (handle both single and multiple files)
+    const droppedFiles = extractFilesFromEvent(e);
+    if (droppedFiles.length > 0) {
+      console.log(`${droppedFiles.length} file(s) detected:`, droppedFiles.map(f => f.name));
       
-      // For all files (including media), send as file_handoff with actual file data
-      // Blob URLs don't work on Android - they're only valid in the browser that created them
-      // So we need to send the actual file bytes for media files too
-      const arrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
+      // If single file, use existing single file handoff
+      if (droppedFiles.length === 1) {
+        const file = droppedFiles[0];
+        console.log('Single file detected:', file.name, file.type);
+        
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        return {
+          intent_type: 'file_handoff',
+          payload: {
+            file: {
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              data: Array.from(uint8Array), // Convert to array for JSON serialization
+            },
+          },
+          target_device: device.id,
+          source_device: '', // Will be set by IntentRouter
+          auto_open: true,
+          timestamp: Date.now(),
+        };
+      }
       
-      return {
-        intent_type: 'file_handoff',
-        payload: {
-          file: {
+      // Multiple files - use batch file handoff
+      console.log('Multiple files detected, creating batch transfer');
+      const batchId = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const totalSize = droppedFiles.reduce((sum, file) => sum + file.size, 0);
+      
+      // Process all files
+      const processedFiles = await Promise.all(
+        droppedFiles.map(async (file, index) => {
+          const arrayBuffer = await file.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          
+          return {
+            id: `file_${index}_${Date.now()}`,
             name: file.name,
             size: file.size,
             type: file.type,
-            data: Array.from(uint8Array), // Convert to array for JSON serialization
+            data: Array.from(uint8Array),
+          };
+        })
+      );
+      
+      return {
+        intent_type: 'batch_file_handoff',
+        payload: {
+          files: {
+            batchId,
+            totalFiles: droppedFiles.length,
+            totalSize,
+            files: processedFiles,
           },
         },
         target_device: device.id,

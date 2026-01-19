@@ -290,6 +290,10 @@ export default function DeviceTiles({
           currentPerms.files = true;
           console.log('Granting FILES permission');
           break;
+        case 'batch_file_handoff':
+          currentPerms.files = true;
+          console.log('Granting FILES permission for batch transfer');
+          break;
         case 'media_continuation':
           currentPerms.media = true;
           console.log('Granting MEDIA permission');
@@ -374,6 +378,14 @@ export default function DeviceTiles({
     switch (intent.intent_type) {
       case 'file_handoff':
         return `${deviceName} wants to send you a file: ${intent.payload.file?.name}. Allow?`;
+      case 'batch_file_handoff': {
+        const files = intent.payload.files;
+        if (!files) return `${deviceName} wants to send files. Allow?`;
+        const totalSizeMB = (files.totalSize / 1024 / 1024).toFixed(2);
+        const fileList = files.files.slice(0, 3).map(f => f.name).join(', ');
+        const moreText = files.files.length > 3 ? ` and ${files.files.length - 3} more` : '';
+        return `${deviceName} wants to send ${files.totalFiles} files (${totalSizeMB} MB):\n${fileList}${moreText}. Allow?`;
+      }
       case 'media_continuation': {
         const rawMedia = intent.payload.media as any;
         let url = '';
@@ -415,6 +427,9 @@ export default function DeviceTiles({
     switch (intent.intent_type) {
       case 'file_handoff':
         await handleFileHandoff(intent);
+        break;
+      case 'batch_file_handoff':
+        await handleBatchFileHandoff(intent);
         break;
       case 'media_continuation':
         await handleMediaContinuation(intent);
@@ -483,6 +498,89 @@ export default function DeviceTiles({
           reader.readAsText(blob);
         }
       }
+    }
+  };
+
+  const handleBatchFileHandoff = async (intent: Intent) => {
+    if (!intent.payload.files) return;
+    
+    const { totalFiles, totalSize, files } = intent.payload.files;
+    
+    console.log(`📦 Batch file transfer received: ${totalFiles} files, ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+    
+    // Show batch download confirmation
+    const confirmed = window.confirm(
+      `Receive ${totalFiles} files (${(totalSize / 1024 / 1024).toFixed(2)} MB)?\n\n` +
+      `Files: ${files.slice(0, 3).map(f => f.name).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more...` : ''}`
+    );
+    
+    if (!confirmed) {
+      console.log('Batch file transfer cancelled by user');
+      return;
+    }
+    
+    // Create a folder structure for batch downloads
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const folderName = `FlowLink-Batch-${timestamp}`;
+    
+    // Process each file in the batch
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const file of files) {
+      try {
+        if (file.data) {
+          // Convert array to Uint8Array
+          let uint8Array: Uint8Array;
+          if (file.data instanceof ArrayBuffer) {
+            uint8Array = new Uint8Array(file.data);
+          } else if (file.data instanceof Blob) {
+            const arrayBuffer = await file.data.arrayBuffer();
+            uint8Array = new Uint8Array(arrayBuffer);
+          } else {
+            // It's a number array
+            uint8Array = new Uint8Array(file.data);
+          }
+          
+          const arrayBuffer = new ArrayBuffer(uint8Array.length);
+          new Uint8Array(arrayBuffer).set(uint8Array);
+          const blob = new Blob([arrayBuffer], { type: file.type });
+          const url = URL.createObjectURL(blob);
+          
+          // Download with folder prefix
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${folderName}/${file.name}`;
+          a.click();
+          URL.revokeObjectURL(url);
+          
+          successCount++;
+          
+          // Small delay between downloads to avoid browser blocking
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (error) {
+        console.error(`Failed to download file ${file.name}:`, error);
+        errorCount++;
+      }
+    }
+    
+    // Show completion status
+    if (errorCount === 0) {
+      console.log(`✅ Batch download complete: ${successCount} files downloaded`);
+      // Show a brief success message
+      const statusDiv = document.createElement('div');
+      statusDiv.style.cssText = `
+        position: fixed; top: 20px; right: 20px; z-index: 10000;
+        background: #4CAF50; color: white; padding: 12px 20px;
+        border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        font-family: system-ui; font-size: 14px;
+      `;
+      statusDiv.textContent = `✅ ${successCount} files downloaded successfully`;
+      document.body.appendChild(statusDiv);
+      setTimeout(() => statusDiv.remove(), 3000);
+    } else {
+      alert(`Batch download completed with errors:\n✅ ${successCount} successful\n❌ ${errorCount} failed`);
     }
   };
 
@@ -783,6 +881,7 @@ export default function DeviceTiles({
     
     const intentTypeNames: Record<string, string> = {
       'file_handoff': 'File',
+      'batch_file_handoff': 'Files',
       'media_continuation': 'Media',
       'link_open': 'Link',
       'prompt_injection': 'Prompt',
@@ -907,6 +1006,7 @@ export default function DeviceTiles({
                       // Show success feedback
                       const intentTypeNames: Record<string, string> = {
                         'file_handoff': 'File',
+                        'batch_file_handoff': 'Files',
                         'media_continuation': 'Media',
                         'link_open': 'Link',
                         'prompt_injection': 'Prompt',

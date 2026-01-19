@@ -59,11 +59,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Intent Receiver Service -->
-        <service
-            android:name=".service.IntentReceiverService"
-            android:exported="false" />
-        
         <!-- Clipboard Sync Service -->
         <service
             android:name=".service.ClipboardSyncService"

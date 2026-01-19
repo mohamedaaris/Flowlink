@@ -3,11 +3,17 @@ package com.flowlink.app.service
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
+import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import com.flowlink.app.model.Intent as FlowLinkIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 /**
  * Intent Handler
@@ -20,6 +26,7 @@ class IntentHandler(private val context: Context) {
         try {
             when (intent.intentType) {
                 "file_handoff" -> handleFileHandoff(intent)
+                "batch_file_handoff" -> handleBatchFileHandoff(intent)
                 "media_continuation" -> handleMediaContinuation(intent)
                 "link_open" -> handleLinkOpen(intent)
                 "prompt_injection" -> handlePromptInjection(intent)
@@ -47,6 +54,99 @@ class IntentHandler(private val context: Context) {
         // Try to open file if we have a URI
         // This would require file transfer to be completed first
         true
+    }
+
+    private suspend fun handleBatchFileHandoff(intent: FlowLinkIntent): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Parse the batch file data from the payload
+            val filesJsonString = intent.payload?.get("files") ?: return@withContext false
+            val filesJson = org.json.JSONObject(filesJsonString)
+            
+            val totalFiles = filesJson.getInt("totalFiles")
+            val totalSize = filesJson.getLong("totalSize")
+            val batchId = filesJson.getString("batchId")
+            val filesArray = filesJson.getJSONArray("files")
+            
+            Log.d("FlowLink", "Batch file handoff: $totalFiles files, ${totalSize / 1024 / 1024}MB, batchId: $batchId")
+            
+            // Create batch folder with timestamp
+            val timestamp = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.getDefault()).format(Date())
+            val batchFolderName = "FlowLink-Batch-$timestamp"
+            
+            // Get Downloads directory
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val batchDir = File(downloadsDir, batchFolderName)
+            
+            // Create batch directory
+            if (!batchDir.exists()) {
+                batchDir.mkdirs()
+            }
+            
+            var successCount = 0
+            var errorCount = 0
+            val savedFiles = mutableListOf<String>()
+            
+            // Process each file in the batch
+            for (i in 0 until filesArray.length()) {
+                try {
+                    val fileObj = filesArray.getJSONObject(i)
+                    val fileName = fileObj.getString("name")
+                    val fileType = fileObj.getString("type")
+                    val fileSize = fileObj.getLong("size")
+                    
+                    // Get file data (it's stored as a number array in JSON)
+                    val dataArray = fileObj.getJSONArray("data")
+                    val byteArray = ByteArray(dataArray.length())
+                    for (j in 0 until dataArray.length()) {
+                        byteArray[j] = dataArray.getInt(j).toByte()
+                    }
+                    
+                    // Save file to batch directory
+                    val file = File(batchDir, fileName)
+                    FileOutputStream(file).use { fos ->
+                        fos.write(byteArray)
+                    }
+                    
+                    savedFiles.add(fileName)
+                    successCount++
+                    
+                    Log.d("FlowLink", "Saved file: $fileName (${byteArray.size} bytes)")
+                    
+                } catch (e: Exception) {
+                    Log.e("FlowLink", "Failed to save file ${i + 1}", e)
+                    errorCount++
+                }
+            }
+            
+            // Show completion notification on main thread
+            withContext(Dispatchers.Main) {
+                val message = if (errorCount == 0) {
+                    "✅ $successCount files saved to $batchFolderName"
+                } else {
+                    "Batch complete: ✅ $successCount saved, ❌ $errorCount failed"
+                }
+                
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                
+                // Log saved files
+                Log.d("FlowLink", "Batch transfer complete:")
+                Log.d("FlowLink", "  Success: $successCount files")
+                Log.d("FlowLink", "  Errors: $errorCount files")
+                Log.d("FlowLink", "  Saved to: ${batchDir.absolutePath}")
+                savedFiles.forEach { fileName ->
+                    Log.d("FlowLink", "    - $fileName")
+                }
+            }
+            
+            return@withContext successCount > 0
+            
+        } catch (e: Exception) {
+            Log.e("FlowLink", "Error handling batch file transfer", e)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Failed to process batch files: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+            false
+        }
     }
 
     private fun handleMediaContinuation(intent: FlowLinkIntent): Boolean {

@@ -75,9 +75,13 @@ class MainActivity : AppCompatActivity() {
         sessionManager = SessionManager(this)
         webSocketManager = WebSocketManager(sessionManager)
         
-        // Register clipboard receiver
+        // Register clipboard receiver with API level check
         val filter = IntentFilter(ClipboardSyncService.ACTION_CLIPBOARD_CHANGED)
-        registerReceiver(clipboardReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            registerReceiver(clipboardReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(clipboardReceiver, filter)
+        }
         
         // Start clipboard sync service
         startClipboardSyncService()
@@ -486,6 +490,16 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "Failed to handle received file", Toast.LENGTH_SHORT).show()
                 }
             }
+            "batch_file_handoff" -> {
+                val payload = intent.payload ?: return
+                val filesJson = payload["files"] ?: return
+                try {
+                    handleBatchFileHandoff(filesJson)
+                } catch (e: Exception) {
+                    android.util.Log.e("FlowLink", "Failed to handle batch files", e)
+                    Toast.makeText(this, "Failed to handle batch files: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -562,6 +576,126 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             android.util.Log.e("FlowLink", "Failed to open file", e)
             Toast.makeText(this, "Failed to open file: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun handleBatchFileHandoff(filesJsonString: String) {
+        try {
+            val filesJson = JSONObject(filesJsonString)
+            val totalFiles = filesJson.getInt("totalFiles")
+            val totalSize = filesJson.getLong("totalSize")
+            val batchId = filesJson.getString("batchId")
+            
+            android.util.Log.d("FlowLink", "📦 Batch Transfer: $totalFiles files (${totalSize / 1024 / 1024}MB)")
+            
+            // Create batch folder with timestamp
+            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", java.util.Locale.getDefault()).format(java.util.Date())
+            val batchFolderName = "FlowLink-Batch-$timestamp"
+            
+            // Get Downloads directory
+            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            val batchDir = File(downloadsDir, batchFolderName)
+            
+            // Create batch directory
+            if (!batchDir.exists()) {
+                batchDir.mkdirs()
+            }
+            
+            val filesArray = filesJson.getJSONArray("files")
+            var successCount = 0
+            var errorCount = 0
+            
+            // Process each file in the batch
+            for (i in 0 until filesArray.length()) {
+                try {
+                    val fileObj = filesArray.getJSONObject(i)
+                    val fileName = fileObj.getString("name")
+                    val fileSize = fileObj.getLong("size")
+                    
+                    // Get file data (it's stored as a number array in JSON)
+                    val dataArray = fileObj.getJSONArray("data")
+                    val byteArray = ByteArray(dataArray.length())
+                    for (j in 0 until dataArray.length()) {
+                        byteArray[j] = dataArray.getInt(j).toByte()
+                    }
+                    
+                    // Save file to batch directory
+                    val file = File(batchDir, fileName)
+                    file.outputStream().use { it.write(byteArray) }
+                    
+                    successCount++
+                    android.util.Log.d("FlowLink", "✅ Saved: $fileName (${byteArray.size} bytes)")
+                    
+                } catch (e: Exception) {
+                    android.util.Log.e("FlowLink", "❌ Failed to save file ${i + 1}", e)
+                    errorCount++
+                }
+            }
+            
+            // Show completion notification with action to open folder
+            val message = if (errorCount == 0) {
+                "✅ $successCount files saved to $batchFolderName"
+            } else {
+                "Batch complete: ✅ $successCount saved, ❌ $errorCount failed"
+            }
+            
+            // Create notification with action to open Downloads folder
+            showBatchTransferNotification(message, batchDir)
+            
+            android.util.Log.d("FlowLink", "📦 Batch transfer complete: $successCount/$totalFiles files saved to ${batchDir.absolutePath}")
+            
+        } catch (e: Exception) {
+            android.util.Log.e("FlowLink", "Failed to handle batch file transfer", e)
+            Toast.makeText(this, "Failed to process batch files: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showBatchTransferNotification(message: String, batchDir: File) {
+        // Show toast first
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        
+        // Also try to open the Downloads folder directly
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(
+                    androidx.core.content.FileProvider.getUriForFile(
+                        this@MainActivity,
+                        "${BuildConfig.APPLICATION_ID}.fileprovider",
+                        batchDir
+                    ),
+                    "resource/folder"
+                )
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            
+            // Try to open with file manager
+            val chooser = Intent.createChooser(intent, "Open folder with")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(chooser)
+            
+        } catch (e: Exception) {
+            android.util.Log.w("FlowLink", "Could not open folder directly, trying alternative method", e)
+            
+            // Fallback: try to open Downloads folder in general
+            try {
+                val downloadsIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(
+                        Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload"),
+                        "vnd.android.document/directory"
+                    )
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(downloadsIntent)
+            } catch (e2: Exception) {
+                android.util.Log.w("FlowLink", "Could not open Downloads folder", e2)
+                // Final fallback: show a dialog with instructions
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Files Saved")
+                    .setMessage("$message\n\nYou can find the files in Downloads/${batchDir.name}")
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
         }
     }
 

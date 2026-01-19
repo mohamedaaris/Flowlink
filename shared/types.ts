@@ -11,7 +11,8 @@ export type IntentType =
   | 'link_open'
   | 'prompt_injection'
   | 'clipboard_sync'
-  | 'remote_access_request';
+  | 'remote_access_request'
+  | 'batch_file_handoff';
 
 export type PermissionType = 
   | 'files'
@@ -67,13 +68,28 @@ export interface Intent {
 }
 
 export interface IntentPayload {
-  // File handoff
+  // File handoff (single file)
   file?: {
     name: string;
     size: number;
     type: string;
     data?: ArrayBuffer | Blob | number[];
     path?: string; // For remote file access
+  };
+  
+  // Batch file handoff (multiple files)
+  files?: {
+    batchId: string; // Unique identifier for this batch
+    totalFiles: number;
+    totalSize: number;
+    files: Array<{
+      id: string; // Unique file ID within batch
+      name: string;
+      size: number;
+      type: string;
+      data?: ArrayBuffer | Blob | number[];
+      path?: string;
+    }>;
   };
   
   // Media continuation

@@ -207,14 +207,27 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                     val intentJson = json.getJSONObject("payload").getJSONObject("intent")
                     val payloadObj = intentJson.optJSONObject("payload")
                     
-                    // Properly parse nested JSON payload (don't convert everything to strings)
+                    // Debug logging for batch files
+                    val intentType = intentJson.getString("intent_type")
+                    Log.d("FlowLink", "=== INTENT RECEIVED ===")
+                    Log.d("FlowLink", "Intent type: $intentType")
+                    Log.d("FlowLink", "Raw payload: ${payloadObj?.toString()}")
+                    
+                    // Enhanced payload parsing for batch files and other complex structures
                     val payloadMap = payloadObj?.let { obj ->
                         obj.keys().asSequence().associateWith { key ->
-                            // Try to get as JSONObject first (for nested structures like "media", "link", etc.)
                             val value = obj.opt(key)
+                            Log.d("FlowLink", "Payload key: $key, value type: ${value?.javaClass?.simpleName}")
                             when {
-                                value is org.json.JSONObject -> value.toString() // Keep as JSON string for nested objects
+                                // For batch files, preserve the entire JSON structure
+                                key == "files" && value is org.json.JSONObject -> {
+                                    Log.d("FlowLink", "Found batch files payload: ${value.toString()}")
+                                    value.toString()
+                                }
+                                // For other nested objects (media, link, etc.), preserve as JSON
+                                value is org.json.JSONObject -> value.toString()
                                 value is org.json.JSONArray -> value.toString()
+                                // For simple values, convert to string
                                 else -> value.toString()
                             }
                         }
