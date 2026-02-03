@@ -12,7 +12,10 @@ export type IntentType =
   | 'prompt_injection'
   | 'clipboard_sync'
   | 'remote_access_request'
-  | 'batch_file_handoff';
+  | 'batch_file_handoff'
+  | 'session_invitation'
+  | 'invitation_response'
+  | 'nearby_session_notification';
 
 export type PermissionType = 
   | 'files'
@@ -24,6 +27,7 @@ export type PermissionType =
 export interface Device {
   id: string;
   name: string;
+  username: string; // User-provided username
   type: DeviceType;
   online: boolean;
   permissions: PermissionSet;
@@ -124,6 +128,32 @@ export interface IntentPayload {
     action: 'start_screen_share' | 'stop_screen_share';
     viewerDeviceId?: string;
   };
+
+  // Session invitation
+  invitation?: {
+    sessionId: string;
+    sessionCode: string;
+    inviterUsername: string;
+    inviterDeviceName: string;
+    message?: string;
+  };
+
+  // Invitation response
+  invitationResponse?: {
+    sessionId: string;
+    accepted: boolean;
+    inviteeUsername: string;
+    inviteeDeviceName: string;
+  };
+
+  // Nearby session notification
+  nearbySession?: {
+    sessionId: string;
+    sessionCode: string;
+    creatorUsername: string;
+    creatorDeviceName: string;
+    deviceCount: number;
+  };
 }
 
 export interface WebSocketMessage {
@@ -163,6 +193,10 @@ export type MessageType =
   | 'group_created'
   | 'group_updated'
   | 'group_deleted'
+  | 'session_invitation'
+  | 'invitation_response'
+  | 'nearby_session_broadcast'
+  | 'notification'
   | 'error';
 
 export interface WebRTCSignal {
@@ -173,3 +207,29 @@ export interface WebRTCSignal {
   data: RTCSessionDescriptionInit | RTCIceCandidateInit;
 }
 
+
+// Notification types
+export interface NotificationData {
+  id: string;
+  type: 'session_invitation' | 'nearby_session' | 'device_joined' | 'file_received' | 'general';
+  title: string;
+  message: string;
+  timestamp: number;
+  data?: any;
+  actions?: NotificationAction[];
+}
+
+export interface NotificationAction {
+  id: string;
+  label: string;
+  action: 'accept' | 'reject' | 'join' | 'dismiss';
+}
+
+// User profile for username management
+export interface UserProfile {
+  username: string;
+  deviceId: string;
+  deviceName: string;
+  deviceType: DeviceType;
+  createdAt: number;
+}

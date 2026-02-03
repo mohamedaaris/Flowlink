@@ -19,12 +19,26 @@ class SessionManager(private val context: Context) {
     private val deviceId: String = getOrCreateDeviceId()
     private val deviceName: String = "${android.os.Build.MODEL} (${android.os.Build.DEVICE})"
     private val deviceType: String = "phone"
+    private var username: String = getOrCreateUsername()
     
     init {
         android.util.Log.d("FlowLink", "SessionManager initialized")
         android.util.Log.d("FlowLink", "  Device ID: $deviceId")
         android.util.Log.d("FlowLink", "  Device Name: $deviceName")
         android.util.Log.d("FlowLink", "  Device Type: $deviceType")
+        android.util.Log.d("FlowLink", "  Username: $username")
+    }
+
+    private fun getOrCreateUsername(): String {
+        val savedUsername = prefs.getString("username", null)
+        if (savedUsername != null) {
+            android.util.Log.d("FlowLink", "Using existing username: $savedUsername")
+            return savedUsername
+        }
+        
+        // Return empty string if no username set - will trigger username dialog
+        android.util.Log.d("FlowLink", "No username found - will show username dialog")
+        return ""
     }
 
     private fun getOrCreateDeviceId(): String {
@@ -133,5 +147,14 @@ class SessionManager(private val context: Context) {
     private fun generateSessionCode(): String {
         return (100000..999999).random().toString()
     }
+    
+    fun getUsername(): String = username
+    
+    fun setUsername(newUsername: String) {
+        username = newUsername
+        prefs.edit().putString("username", newUsername).apply()
+        android.util.Log.d("FlowLink", "Username updated to: $newUsername")
+    }
+    
+    fun hasUsername(): Boolean = username.isNotEmpty()
 }
-

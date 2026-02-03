@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +26,9 @@ import com.flowlink.app.service.WebSocketManager
 import com.flowlink.app.ui.DeviceTilesFragment
 import com.flowlink.app.ui.SessionCreatedFragment
 import com.flowlink.app.ui.SessionManagerFragment
+import com.flowlink.app.ui.InvitationDialogFragment
+import com.flowlink.app.ui.UsernameDialogFragment
+import com.flowlink.app.service.NotificationService
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.flow.collectLatest
@@ -32,10 +36,11 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), UsernameDialogFragment.UsernameDialogListener, InvitationDialogFragment.InvitationDialogListener {
     private lateinit var binding: ActivityMainBinding
     lateinit var sessionManager: SessionManager
     lateinit var webSocketManager: WebSocketManager
+    lateinit var notificationService: NotificationService
     private var clipboardSyncEnabled = false
     
     private val clipboardReceiver = object : BroadcastReceiver() {
@@ -59,6 +64,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            android.util.Log.d("FlowLink", "Notification permission granted")
+        } else {
+            Toast.makeText(this, "Notification permission is required to receive invitations", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private val qrCodeLauncher = registerForActivityResult(ScanContract()) { result ->
         if (result.contents != null) {
             val sessionCode = result.contents
@@ -73,7 +88,43 @@ class MainActivity : AppCompatActivity() {
 
         // Initialize managers
         sessionManager = SessionManager(this)
-        webSocketManager = WebSocketManager(sessionManager)
+        webSocketManager = WebSocketManager(this)
+        notificationService = NotificationService(this)
+        
+        // Check if username is set, show dialog if not
+        if (!sessionManager.hasUsername()) {
+            showUsernameDialog()
+        } else {
+            initializeApp(savedInstanceState)
+        }
+    }
+    
+    private fun showUsernameDialog() {
+        val dialog = UsernameDialogFragment.newInstance()
+        dialog.show(supportFragmentManager, UsernameDialogFragment.TAG)
+    }
+    
+    override fun onUsernameSubmitted(username: String) {
+        sessionManager.setUsername(username)
+        initializeApp(null)
+    }
+    
+    private fun initializeApp(savedInstanceState: Bundle?) {
+        
+        // Request notification permission for Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
+                != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        
+        // Connect to WebSocket immediately to receive invitations
+        // even when not in a session
+        if (webSocketManager.connectionState.value !is WebSocketManager.ConnectionState.Connected) {
+            android.util.Log.d("FlowLink", "Connecting WebSocket for invitation listening")
+            webSocketManager.connect("") // Empty code - just for listening to invitations
+        }
         
         // Register clipboard receiver with API level check
         val filter = IntentFilter(ClipboardSyncService.ACTION_CLIPBOARD_CHANGED)
@@ -178,6 +229,43 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+            NotificationService.ACTION_ACCEPT_INVITATION -> {
+                // Handle invitation acceptance
+                val sessionId = intent.getStringExtra(NotificationService.EXTRA_SESSION_ID)
+                val sessionCode = intent.getStringExtra(NotificationService.EXTRA_SESSION_CODE)
+                val inviterUsername = intent.getStringExtra(NotificationService.EXTRA_INVITER_USERNAME)
+                
+                if (sessionCode != null) {
+                    // Send acceptance response
+                    sendInvitationResponse(sessionId ?: "", true, inviterUsername ?: "")
+                    // Join the session
+                    joinSession(sessionCode)
+                }
+                // Clear the notification
+                notificationService.clearNotification(NotificationService.NOTIFICATION_ID_INVITATION)
+            }
+            NotificationService.ACTION_REJECT_INVITATION -> {
+                // Handle invitation rejection
+                val sessionId = intent.getStringExtra(NotificationService.EXTRA_SESSION_ID)
+                val inviterUsername = intent.getStringExtra(NotificationService.EXTRA_INVITER_USERNAME)
+                
+                // Send rejection response
+                sendInvitationResponse(sessionId ?: "", false, inviterUsername ?: "")
+                // Clear the notification
+                notificationService.clearNotification(NotificationService.NOTIFICATION_ID_INVITATION)
+                
+                Toast.makeText(this, "Invitation declined", Toast.LENGTH_SHORT).show()
+            }
+            NotificationService.ACTION_JOIN_NEARBY -> {
+                // Handle nearby session join
+                val sessionCode = intent.getStringExtra(NotificationService.EXTRA_SESSION_CODE)
+                
+                if (sessionCode != null) {
+                    joinSession(sessionCode)
+                }
+                // Clear the notification
+                notificationService.clearNotification(NotificationService.NOTIFICATION_ID_NEARBY)
+            }
         }
     }
 
@@ -199,6 +287,7 @@ class MainActivity : AppCompatActivity() {
                         put("deviceId", sessionManager.getDeviceId())
                         put("deviceName", sessionManager.getDeviceName())
                         put("deviceType", sessionManager.getDeviceType())
+                        put("username", sessionManager.getUsername())
                     })
                     put("timestamp", System.currentTimeMillis())
                 }.toString())
@@ -810,5 +899,102 @@ class MainActivity : AppCompatActivity() {
         intent.action = ClipboardSyncService.ACTION_UPDATE_CLIPBOARD
         intent.putExtra(ClipboardSyncService.EXTRA_TEXT, text)
         startService(intent)
+    }
+
+    // InvitationDialogListener implementation
+    override fun sendInvitation(targetUser: String, message: String?) {
+        lifecycleScope.launch {
+            try {
+                val sessionId = sessionManager.getCurrentSessionId()
+                val sessionCode = sessionManager.getCurrentSessionCode()
+                
+                if (sessionId == null || sessionCode == null) {
+                    Toast.makeText(this@MainActivity, "No active session", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val invitationJson = org.json.JSONObject().apply {
+                    put("sessionId", sessionId)
+                    put("sessionCode", sessionCode)
+                    put("inviterUsername", sessionManager.getUsername())
+                    put("inviterDeviceName", sessionManager.getDeviceName())
+                    if (message != null) {
+                        put("message", message)
+                    }
+                }
+
+                webSocketManager.sendMessage(org.json.JSONObject().apply {
+                    put("type", "session_invitation")
+                    put("sessionId", sessionId)
+                    put("deviceId", sessionManager.getDeviceId())
+                    put("payload", org.json.JSONObject().apply {
+                        put("targetIdentifier", targetUser)
+                        put("invitation", invitationJson)
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+
+                android.util.Log.d("FlowLink", "Sent invitation to: $targetUser")
+            } catch (e: Exception) {
+                android.util.Log.e("FlowLink", "Failed to send invitation", e)
+                Toast.makeText(this@MainActivity, "Failed to send invitation", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun broadcastNearby() {
+        lifecycleScope.launch {
+            try {
+                val sessionId = sessionManager.getCurrentSessionId()
+                
+                if (sessionId == null) {
+                    Toast.makeText(this@MainActivity, "No active session", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                webSocketManager.sendMessage(org.json.JSONObject().apply {
+                    put("type", "nearby_session_broadcast")
+                    put("sessionId", sessionId)
+                    put("deviceId", sessionManager.getDeviceId())
+                    put("payload", org.json.JSONObject())
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+
+                android.util.Log.d("FlowLink", "Broadcasted to nearby devices")
+            } catch (e: Exception) {
+                android.util.Log.e("FlowLink", "Failed to broadcast nearby", e)
+                Toast.makeText(this@MainActivity, "Failed to broadcast to nearby devices", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun getSessionCode(): String {
+        return sessionManager.getCurrentSessionCode() ?: ""
+    }
+
+    override fun getSessionId(): String {
+        return sessionManager.getCurrentSessionId() ?: ""
+    }
+
+    private fun sendInvitationResponse(sessionId: String, accepted: Boolean, inviterUsername: String) {
+        lifecycleScope.launch {
+            try {
+                webSocketManager.sendMessage(org.json.JSONObject().apply {
+                    put("type", "invitation_response")
+                    put("sessionId", sessionId)
+                    put("deviceId", sessionManager.getDeviceId())
+                    put("payload", org.json.JSONObject().apply {
+                        put("accepted", accepted)
+                        put("inviteeUsername", sessionManager.getUsername())
+                        put("inviteeDeviceName", sessionManager.getDeviceName())
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+
+                android.util.Log.d("FlowLink", "Sent invitation response: $accepted to $inviterUsername")
+            } catch (e: Exception) {
+                android.util.Log.e("FlowLink", "Failed to send invitation response", e)
+            }
+        }
     }
 }

@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowLink Invitation System Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .device {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .device h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .session-info {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        input, textarea {
+            width: 200px;
+            padding: 5px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>FlowLink Invitation System Test</h1>
+    <p>This page simulates two devices to test the invitation system.</p>
+
+    <!-- Device 1 -->
+    <div class="device">
+        <h2>Device 1 (Alice's Laptop)</h2>
+        <div id="status1" class="status disconnected">Disconnected</div>
+        <div id="session1" class="session-info" style="display: none;">
+            <strong>Session:</strong> <span id="sessionCode1">-</span><br>
+            <strong>Session ID:</strong> <span id="sessionId1">-</span>
+        </div>
+        <div>
+            <button id="createSession1" onclick="createSession(1)">Create Session</button>
+            <button id="joinSession1" onclick="joinSession(1)" disabled>Join Session</button>
+            <input type="text" id="joinCode1" placeholder="Enter session code" />
+        </div>
+        <div>
+            <h4>Send Invitation:</h4>
+            <input type="text" id="targetUser1" placeholder="Target username" value="Bob" />
+            <textarea id="message1" placeholder="Optional message"></textarea><br>
+            <button id="sendInvite1" onclick="sendInvitation(1)" disabled>Send Invitation</button>
+            <button id="broadcastNearby1" onclick="broadcastNearby(1)" disabled>Broadcast Nearby</button>
+        </div>
+        <div class="log" id="log1"></div>
+    </div>
+
+    <!-- Device 2 -->
+    <div class="device">
+        <h2>Device 2 (Bob's Phone)</h2>
+        <div id="status2" class="status disconnected">Disconnected</div>
+        <div id="session2" class="session-info" style="display: none;">
+            <strong>Session:</strong> <span id="sessionCode2">-</span><br>
+            <strong>Session ID:</strong> <span id="sessionId2">-</span>
+        </div>
+        <div>
+            <button id="createSession2" onclick="createSession(2)">Create Session</button>
+            <button id="joinSession2" onclick="joinSession(2)" disabled>Join Session</button>
+            <input type="text" id="joinCode2" placeholder="Enter session code" />
+        </div>
+        <div>
+            <h4>Send Invitation:</h4>
+            <input type="text" id="targetUser2" placeholder="Target username" value="Alice" />
+            <textarea id="message2" placeholder="Optional message"></textarea><br>
+            <button id="sendInvite2" onclick="sendInvitation(2)" disabled>Send Invitation</button>
+            <button id="broadcastNearby2" onclick="broadcastNearby(2)" disabled>Broadcast Nearby</button>
+        </div>
+        <div class="log" id="log2"></div>
+    </div>
+
+    <script>
+        const WS_URL = 'ws://localhost:8080';
+        const devices = {
+            1: {
+                id: 'device-alice-' + Date.now(),
+                name: 'Alice\'s Laptop',
+                username: 'Alice',
+                type: 'laptop',
+                ws: null,
+                sessionId: null,
+                sessionCode: null
+            },
+            2: {
+                id: 'device-bob-' + Date.now(),
+                name: 'Bob\'s Phone', 
+                username: 'Bob',
+                type: 'phone',
+                ws: null,
+                sessionId: null,
+                sessionCode: null
+            }
+        };
+
+        function log(deviceNum, message) {
+            const logEl = document.getElementById(`log${deviceNum}`);
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.innerHTML += `[${timestamp}] ${message}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function updateStatus(deviceNum, connected) {
+            const statusEl = document.getElementById(`status${deviceNum}`);
+            statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+            statusEl.className = `status ${connected ? 'connected' : 'disconnected'}`;
+        }
+
+        function updateSessionInfo(deviceNum, sessionId, sessionCode) {
+            devices[deviceNum].sessionId = sessionId;
+            devices[deviceNum].sessionCode = sessionCode;
+            
+            document.getElementById(`sessionId${deviceNum}`).textContent = sessionId || '-';
+            document.getElementById(`sessionCode${deviceNum}`).textContent = sessionCode || '-';
+            document.getElementById(`session${deviceNum}`).style.display = sessionId ? 'block' : 'none';
+            
+            // Enable/disable buttons
+            const hasSession = !!sessionId;
+            document.getElementById(`sendInvite${deviceNum}`).disabled = !hasSession;
+            document.getElementById(`broadcastNearby${deviceNum}`).disabled = !hasSession;
+        }
+
+        function connectDevice(deviceNum) {
+            const device = devices[deviceNum];
+            if (device.ws) return;
+
+            device.ws = new WebSocket(WS_URL);
+            
+            device.ws.onopen = () => {
+                log(deviceNum, `✅ Connected to server`);
+                updateStatus(deviceNum, true);
+                
+                // Register device for invitation listening
+                const registerMessage = {
+                    type: 'device_register',
+                    payload: {
+                        deviceId: device.id,
+                        deviceName: device.name,
+                        deviceType: device.type,
+                        username: device.username
+                    },
+                    timestamp: Date.now()
+                };
+                
+                device.ws.send(JSON.stringify(registerMessage));
+                log(deviceNum, `📝 Registering device for invitations...`);
+                
+                document.getElementById(`joinSession${deviceNum}`).disabled = false;
+            };
+
+            device.ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    log(deviceNum, `📨 Received: ${message.type}`);
+                    
+                    switch (message.type) {
+                        case 'device_registered':
+                            log(deviceNum, `✅ Device registered for invitations`);
+                            break;
+                            
+                        case 'session_created':
+                            const { sessionId, code } = message.payload;
+                            log(deviceNum, `🎉 Session created: ${code} (ID: ${sessionId})`);
+                            updateSessionInfo(deviceNum, sessionId, code);
+                            break;
+                            
+                        case 'session_joined':
+                            const joinedSessionId = message.payload.sessionId;
+                            const joinedCode = device.sessionCode; // We stored this when joining
+                            log(deviceNum, `🎉 Joined session: ${joinedCode} (ID: ${joinedSessionId})`);
+                            updateSessionInfo(deviceNum, joinedSessionId, joinedCode);
+                            break;
+                            
+                        case 'session_invitation':
+                            const invitation = message.payload.invitation;
+                            log(deviceNum, `📨 INVITATION from ${invitation.inviterUsername}: Join session ${invitation.sessionCode}`);
+                            
+                            // Auto-accept for testing
+                            setTimeout(() => {
+                                acceptInvitation(deviceNum, invitation.sessionId, invitation.sessionCode);
+                            }, 1000);
+                            break;
+                            
+                        case 'nearby_session_broadcast':
+                            const nearby = message.payload.nearbySession;
+                            log(deviceNum, `📡 NEARBY SESSION: ${nearby.creatorUsername} created session ${nearby.sessionCode} with ${nearby.deviceCount} devices`);
+                            
+                            // Auto-join for testing
+                            setTimeout(() => {
+                                joinSessionByCode(deviceNum, nearby.sessionCode);
+                            }, 2000);
+                            break;
+                            
+                        case 'invitation_sent':
+                            const sent = message.payload;
+                            log(deviceNum, `✅ Invitation sent to ${sent.targetUsername || sent.targetIdentifier}`);
+                            break;
+                            
+                        case 'invitation_response':
+                            const response = message.payload;
+                            const status = response.accepted ? 'ACCEPTED' : 'REJECTED';
+                            log(deviceNum, `📬 ${response.inviteeUsername} ${status} your invitation`);
+                            break;
+                            
+                        case 'device_connected':
+                            const deviceInfo = message.payload.device;
+                            log(deviceNum, `👋 ${deviceInfo.username} (${deviceInfo.name}) joined the session`);
+                            break;
+                            
+                        case 'error':
+                            log(deviceNum, `❌ Error: ${message.payload.message}`);
+                            break;
+                            
+                        default:
+                            log(deviceNum, `📝 ${message.type}: ${JSON.stringify(message.payload)}`);
+                    }
+                } catch (e) {
+                    log(deviceNum, `❌ Failed to parse message: ${e.message}`);
+                }
+            };
+
+            device.ws.onclose = () => {
+                log(deviceNum, `❌ Disconnected from server`);
+                updateStatus(deviceNum, false);
+                device.ws = null;
+                updateSessionInfo(deviceNum, null, null);
+                document.getElementById(`joinSession${deviceNum}`).disabled = true;
+            };
+
+            device.ws.onerror = (error) => {
+                log(deviceNum, `❌ WebSocket error: ${error}`);
+            };
+        }
+
+        function createSession(deviceNum) {
+            const device = devices[deviceNum];
+            if (!device.ws) {
+                connectDevice(deviceNum);
+                setTimeout(() => createSession(deviceNum), 1000);
+                return;
+            }
+
+            const message = {
+                type: 'session_create',
+                payload: {
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    deviceType: device.type,
+                    username: device.username
+                },
+                timestamp: Date.now()
+            };
+
+            device.ws.send(JSON.stringify(message));
+            log(deviceNum, `📤 Creating session...`);
+        }
+
+        function joinSession(deviceNum) {
+            const code = document.getElementById(`joinCode${deviceNum}`).value.trim();
+            if (!code) {
+                alert('Please enter a session code');
+                return;
+            }
+            joinSessionByCode(deviceNum, code);
+        }
+
+        function joinSessionByCode(deviceNum, code) {
+            const device = devices[deviceNum];
+            if (!device.ws) {
+                connectDevice(deviceNum);
+                setTimeout(() => joinSessionByCode(deviceNum, code), 1000);
+                return;
+            }
+
+            device.sessionCode = code; // Store for later reference
+
+            const message = {
+                type: 'session_join',
+                payload: {
+                    code: code,
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    deviceType: device.type,
+                    username: device.username
+                },
+                timestamp: Date.now()
+            };
+
+            device.ws.send(JSON.stringify(message));
+            log(deviceNum, `📤 Joining session ${code}...`);
+        }
+
+        function sendInvitation(deviceNum) {
+            const device = devices[deviceNum];
+            const targetUser = document.getElementById(`targetUser${deviceNum}`).value.trim();
+            const message = document.getElementById(`message${deviceNum}`).value.trim();
+
+            if (!device.ws || !device.sessionId) {
+                alert('Not connected or no active session');
+                return;
+            }
+
+            if (!targetUser) {
+                alert('Please enter a target username');
+                return;
+            }
+
+            const invitation = {
+                sessionId: device.sessionId,
+                sessionCode: device.sessionCode,
+                inviterUsername: device.username,
+                inviterDeviceName: device.name,
+                message: message || undefined
+            };
+
+            const wsMessage = {
+                type: 'session_invitation',
+                sessionId: device.sessionId,
+                deviceId: device.id,
+                payload: {
+                    targetIdentifier: targetUser,
+                    invitation: invitation
+                },
+                timestamp: Date.now()
+            };
+
+            device.ws.send(JSON.stringify(wsMessage));
+            log(deviceNum, `📤 Sending invitation to ${targetUser}...`);
+        }
+
+        function broadcastNearby(deviceNum) {
+            const device = devices[deviceNum];
+
+            if (!device.ws || !device.sessionId) {
+                alert('Not connected or no active session');
+                return;
+            }
+
+            const message = {
+                type: 'nearby_session_broadcast',
+                sessionId: device.sessionId,
+                deviceId: device.id,
+                payload: {},
+                timestamp: Date.now()
+            };
+
+            device.ws.send(JSON.stringify(message));
+            log(deviceNum, `📡 Broadcasting to nearby devices...`);
+        }
+
+        function acceptInvitation(deviceNum, sessionId, sessionCode) {
+            const device = devices[deviceNum];
+
+            if (!device.ws) return;
+
+            // Send acceptance response
+            const responseMessage = {
+                type: 'invitation_response',
+                sessionId: sessionId,
+                deviceId: device.id,
+                payload: {
+                    accepted: true,
+                    inviteeUsername: device.username,
+                    inviteeDeviceName: device.name
+                },
+                timestamp: Date.now()
+            };
+
+            device.ws.send(JSON.stringify(responseMessage));
+            log(deviceNum, `📤 Accepting invitation...`);
+
+            // Join the session
+            setTimeout(() => {
+                joinSessionByCode(deviceNum, sessionCode);
+            }, 500);
+        }
+
+        // Auto-connect both devices on page load
+        window.onload = () => {
+            log(1, '🚀 Device 1 (Alice) ready - connecting...');
+            log(2, '🚀 Device 2 (Bob) ready - connecting...');
+            
+            // Connect both devices immediately
+            connectDevice(1);
+            connectDevice(2);
+        };
+    </script>
+</body>
+</html>

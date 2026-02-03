@@ -1,6 +1,7 @@
 package com.flowlink.app.service
 
 import android.util.Log
+import com.flowlink.app.MainActivity
 import com.flowlink.app.model.Intent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,8 @@ import java.util.concurrent.TimeUnit
  * 
  * Handles WebSocket connection to backend for signaling
  */
-class WebSocketManager(private val sessionManager: SessionManager) {
+class WebSocketManager(private val mainActivity: MainActivity) {
+    private val sessionManager: SessionManager = mainActivity.sessionManager
     private val client = OkHttpClient.Builder()
         .pingInterval(30, TimeUnit.SECONDS)
         .build()
@@ -64,7 +66,7 @@ class WebSocketManager(private val sessionManager: SessionManager) {
     // IMPORTANT: Railway production backend
     // For Railway production: "wss://flowlink-production.up.railway.app"
     // For local development: "ws://10.0.2.2:8080" (emulator) or "ws://YOUR_COMPUTER_IP:8080" (physical device)
-    private val WS_URL = "wss://flowlink-production.up.railway.app"
+    private val WS_URL = "ws://192.168.0.106:8080"
 
     fun connect(sessionCode: String) {
         if (_connectionState.value == ConnectionState.Connected) {
@@ -93,7 +95,21 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                 Log.d("FlowLink", "  Session Code: $sessionCode")
                 _connectionState.value = ConnectionState.Connected
 
-                // Only send session_join if we have a code (not for session_create)
+                // ALWAYS register device for invitation listening first
+                val registerMessage = JSONObject().apply {
+                    put("type", "device_register")
+                    put("payload", JSONObject().apply {
+                        put("deviceId", sessionManager.getDeviceId())
+                        put("deviceName", sessionManager.getDeviceName())
+                        put("deviceType", sessionManager.getDeviceType())
+                        put("username", sessionManager.getUsername())
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                Log.d("FlowLink", "Sending device_register: $registerMessage")
+                sendMessage(registerMessage.toString())
+
+                // Then send session_join if we have a code
                 if (sessionCode.isNotEmpty()) {
                     val joinMessage = JSONObject().apply {
                         put("type", "session_join")
@@ -102,6 +118,7 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                             put("deviceId", sessionManager.getDeviceId())
                             put("deviceName", sessionManager.getDeviceName())
                             put("deviceType", sessionManager.getDeviceType())
+                            put("username", sessionManager.getUsername())
                         })
                         put("timestamp", System.currentTimeMillis())
                     }
@@ -203,6 +220,14 @@ class WebSocketManager(private val sessionManager: SessionManager) {
             val type = json.getString("type")
 
             when (type) {
+                "device_registered" -> {
+                    Log.d("FlowLink", "📝 Device registered for invitation listening")
+                    val payload = json.getJSONObject("payload")
+                    val registered = payload.optBoolean("registered", false)
+                    if (registered) {
+                        Log.d("FlowLink", "✅ Ready to receive invitations")
+                    }
+                }
                 "intent_received" -> {
                     val intentJson = json.getJSONObject("payload").getJSONObject("intent")
                     val payloadObj = intentJson.optJSONObject("payload")
@@ -360,14 +385,89 @@ class WebSocketManager(private val sessionManager: SessionManager) {
                             Log.d("FlowLink", "📋 Received clipboard from remote: ${text.take(50)}...")
                             // Update clipboard via MainActivity
                             try {
-                                val context = sessionManager as? android.content.Context
-                                if (context is com.flowlink.app.MainActivity) {
-                                    context.updateClipboardFromRemote(text)
-                                }
+                                mainActivity.updateClipboardFromRemote(text)
                             } catch (e: Exception) {
                                 Log.e("FlowLink", "Failed to update clipboard", e)
                             }
                         }
+                    }
+                }
+                "session_invitation" -> {
+                    Log.d("FlowLink", "📨 Received session invitation")
+                    val invitation = json.getJSONObject("payload").optJSONObject("invitation")
+                    if (invitation != null) {
+                        val sessionId = invitation.optString("sessionId", "")
+                        val sessionCode = invitation.optString("sessionCode", "")
+                        val inviterUsername = invitation.optString("inviterUsername", "")
+                        val inviterDeviceName = invitation.optString("inviterDeviceName", "")
+                        val message = invitation.optString("message", "")
+                        
+                        // Show notification
+                        try {
+                            mainActivity.notificationService.showSessionInvitation(
+                                sessionId, sessionCode, inviterUsername, inviterDeviceName, message
+                            )
+                        } catch (e: Exception) {
+                            Log.e("FlowLink", "Failed to show invitation notification", e)
+                        }
+                    }
+                }
+                "nearby_session_broadcast" -> {
+                    Log.d("FlowLink", "📨 Received nearby session broadcast")
+                    val nearbySession = json.getJSONObject("payload").optJSONObject("nearbySession")
+                    if (nearbySession != null) {
+                        val sessionId = nearbySession.optString("sessionId", "")
+                        val sessionCode = nearbySession.optString("sessionCode", "")
+                        val creatorUsername = nearbySession.optString("creatorUsername", "")
+                        val creatorDeviceName = nearbySession.optString("creatorDeviceName", "")
+                        val deviceCount = nearbySession.optInt("deviceCount", 1)
+                        
+                        // Show notification
+                        try {
+                            mainActivity.notificationService.showNearbySession(
+                                sessionId, sessionCode, creatorUsername, creatorDeviceName, deviceCount
+                            )
+                        } catch (e: Exception) {
+                            Log.e("FlowLink", "Failed to show nearby session notification", e)
+                        }
+                    }
+                }
+                "invitation_response" -> {
+                    Log.d("FlowLink", "📨 Received invitation response")
+                    val response = json.getJSONObject("payload")
+                    val accepted = response.optBoolean("accepted", false)
+                    val inviteeUsername = response.optString("inviteeUsername", "")
+                    val inviteeDeviceName = response.optString("inviteeDeviceName", "")
+                    
+                    val message = if (accepted) {
+                        "$inviteeUsername accepted your invitation"
+                    } else {
+                        "$inviteeUsername declined your invitation"
+                    }
+                    
+                    try {
+                        mainActivity.notificationService.showNotification(
+                            if (accepted) "Invitation Accepted" else "Invitation Declined",
+                            message
+                        )
+                    } catch (e: Exception) {
+                        Log.e("FlowLink", "Failed to show invitation response notification", e)
+                    }
+                }
+                "invitation_sent" -> {
+                    Log.d("FlowLink", "📨 Received invitation sent confirmation")
+                    val response = json.getJSONObject("payload")
+                    val targetUsername = response.optString("targetUsername", "")
+                    val targetIdentifier = response.optString("targetIdentifier", "")
+                    val displayName = targetUsername.ifEmpty { targetIdentifier }
+                    
+                    try {
+                        mainActivity.notificationService.showNotification(
+                            "Invitation Sent",
+                            "Invitation sent to $displayName"
+                        )
+                    } catch (e: Exception) {
+                        Log.e("FlowLink", "Failed to show invitation sent notification", e)
                     }
                 }
                 "error" -> {

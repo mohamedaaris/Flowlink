@@ -1,0 +1,226 @@
+package com.flowlink.app.service
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import com.flowlink.app.MainActivity
+import com.flowlink.app.R
+
+/**
+ * Notification Service for Android
+ * 
+ * Handles session invitations, nearby device notifications, and general notifications
+ */
+class NotificationService(private val context: Context) {
+    
+    companion object {
+        const val CHANNEL_ID_INVITATIONS = "session_invitations"
+        const val CHANNEL_ID_NEARBY = "nearby_sessions"
+        const val CHANNEL_ID_GENERAL = "general"
+        
+        const val NOTIFICATION_ID_INVITATION = 1001
+        const val NOTIFICATION_ID_NEARBY = 1002
+        const val NOTIFICATION_ID_GENERAL = 1003
+        
+        const val ACTION_ACCEPT_INVITATION = "accept_invitation"
+        const val ACTION_REJECT_INVITATION = "reject_invitation"
+        const val ACTION_JOIN_NEARBY = "join_nearby"
+        const val ACTION_DISMISS = "dismiss"
+        
+        const val EXTRA_SESSION_ID = "session_id"
+        const val EXTRA_SESSION_CODE = "session_code"
+        const val EXTRA_INVITER_USERNAME = "inviter_username"
+        const val EXTRA_INVITER_DEVICE_NAME = "inviter_device_name"
+    }
+    
+    private val notificationManager = NotificationManagerCompat.from(context)
+    
+    init {
+        createNotificationChannels()
+    }
+    
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channels = listOf(
+                NotificationChannel(
+                    CHANNEL_ID_INVITATIONS,
+                    "Session Invitations",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Notifications for session invitations from other users"
+                },
+                NotificationChannel(
+                    CHANNEL_ID_NEARBY,
+                    "Nearby Sessions",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Notifications for nearby FlowLink sessions"
+                },
+                NotificationChannel(
+                    CHANNEL_ID_GENERAL,
+                    "General",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "General FlowLink notifications"
+                }
+            )
+            
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            channels.forEach { manager.createNotificationChannel(it) }
+        }
+    }
+    
+    /**
+     * Show session invitation notification
+     */
+    fun showSessionInvitation(
+        sessionId: String,
+        sessionCode: String,
+        inviterUsername: String,
+        inviterDeviceName: String,
+        message: String? = null
+    ) {
+        val acceptIntent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_ACCEPT_INVITATION
+            putExtra(EXTRA_SESSION_ID, sessionId)
+            putExtra(EXTRA_SESSION_CODE, sessionCode)
+            putExtra(EXTRA_INVITER_USERNAME, inviterUsername)
+            putExtra(EXTRA_INVITER_DEVICE_NAME, inviterDeviceName)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        
+        val rejectIntent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_REJECT_INVITATION
+            putExtra(EXTRA_SESSION_ID, sessionId)
+            putExtra(EXTRA_INVITER_USERNAME, inviterUsername)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        
+        val acceptPendingIntent = PendingIntent.getActivity(
+            context, 0, acceptIntent, 
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val rejectPendingIntent = PendingIntent.getActivity(
+            context, 1, rejectIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_INVITATIONS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Session Invitation")
+            .setContentText("$inviterUsername ($inviterDeviceName) invited you to join their session")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(
+                message ?: "$inviterUsername ($inviterDeviceName) invited you to join their FlowLink session. Tap Accept to join or Reject to decline."
+            ))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .addAction(R.drawable.ic_check, "Accept", acceptPendingIntent)
+            .addAction(R.drawable.ic_close, "Reject", rejectPendingIntent)
+            .build()
+        
+        notificationManager.notify(NOTIFICATION_ID_INVITATION, notification)
+    }
+    
+    /**
+     * Show nearby session notification
+     */
+    fun showNearbySession(
+        sessionId: String,
+        sessionCode: String,
+        creatorUsername: String,
+        creatorDeviceName: String,
+        deviceCount: Int
+    ) {
+        val joinIntent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_JOIN_NEARBY
+            putExtra(EXTRA_SESSION_ID, sessionId)
+            putExtra(EXTRA_SESSION_CODE, sessionCode)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        
+        val joinPendingIntent = PendingIntent.getActivity(
+            context, 2, joinIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_NEARBY)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Nearby Session Found")
+            .setContentText("$creatorUsername created a session with $deviceCount device(s)")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(
+                "$creatorUsername ($creatorDeviceName) created a FlowLink session nearby with $deviceCount device(s). Would you like to join?"
+            ))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(joinPendingIntent)
+            .addAction(R.drawable.ic_group, "Join Session", joinPendingIntent)
+            .build()
+        
+        notificationManager.notify(NOTIFICATION_ID_NEARBY, notification)
+    }
+    
+    /**
+     * Show device joined notification
+     */
+    fun showDeviceJoined(username: String, deviceName: String) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_GENERAL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Device Joined")
+            .setContentText("$username ($deviceName) joined the session")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+        
+        notificationManager.notify(NOTIFICATION_ID_GENERAL, notification)
+    }
+    
+    /**
+     * Show file received notification
+     */
+    fun showFileReceived(filename: String, senderUsername: String) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_GENERAL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("File Received")
+            .setContentText("Received \"$filename\" from $senderUsername")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+        
+        notificationManager.notify(NOTIFICATION_ID_GENERAL, notification)
+    }
+    
+    /**
+     * Show general notification
+     */
+    fun showNotification(title: String, message: String) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_GENERAL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+        
+        notificationManager.notify(NOTIFICATION_ID_GENERAL, notification)
+    }
+    
+    /**
+     * Clear all notifications
+     */
+    fun clearAll() {
+        notificationManager.cancelAll()
+    }
+    
+    /**
+     * Clear specific notification
+     */
+    fun clearNotification(notificationId: Int) {
+        notificationManager.cancel(notificationId)
+    }
+}

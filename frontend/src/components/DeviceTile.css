@@ -261,3 +261,10 @@
   transform: translateY(0);
 }
 
+.device-subtitle {
+  font-size: 0.9rem;
+  color: #666 !important;
+  margin: 0;
+  font-weight: 500;
+  opacity: 0.8;
+}

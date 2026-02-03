@@ -363,7 +363,8 @@ export default function DeviceTile({
       <div className="device-tile-header">
         <div className="device-icon">{getDeviceIcon()}</div>
         <div className="device-info">
-          <h3 className="device-name">{device.name}</h3>
+          <h3 className="device-name">{device.username || device.name}</h3>
+          <p className="device-subtitle">{device.name}</p>
           <div className="device-status">
             <span
               className="status-dot"

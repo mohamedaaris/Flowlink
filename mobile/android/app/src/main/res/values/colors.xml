@@ -1,11 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- FlowLink Custom Colors -->
+    <color name="primary">#007bff</color>
+    <color name="primary_dark">#0056b3</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="text_primary">#333333</color>
+    <color name="text_secondary">#666666</color>
+    <color name="text_hint">#999999</color>
+    <color name="error">#dc3545</color>
+    <color name="success">#28a745</color>
+    <color name="warning">#ffc107</color>
+    <color name="info">#17a2b8</color>
+    <color name="border">#e1e5e9</color>
+    <color name="input_background">#f8f9fa</color>
+    <color name="input_border">#e1e5e9</color>
+    <color name="info_background">#f8f9fa</color>
+    
+    <!-- Standard Android Theme Colors -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
     <color name="teal_200">#FF03DAC5</color>
     <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    
+    <!-- Additional Material Design Colors -->
+    <color name="colorPrimary">#007bff</color>
+    <color name="colorPrimaryDark">#0056b3</color>
+    <color name="colorAccent">#FF03DAC5</color>
 </resources>
-

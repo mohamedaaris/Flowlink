@@ -126,6 +126,10 @@ class DeviceTilesFragment : Fragment() {
             (activity as? MainActivity)?.leaveSession()
         }
 
+        binding.btnInviteOthers.setOnClickListener {
+            showInvitationDialog()
+        }
+
         // Setup RecyclerView
         binding.rvDevices.layoutManager = LinearLayoutManager(requireContext())
         deviceAdapter = DeviceTileAdapter(
@@ -391,6 +395,11 @@ class DeviceTilesFragment : Fragment() {
         } else {
             null
         }
+    }
+
+    private fun showInvitationDialog() {
+        val dialog = InvitationDialogFragment.newInstance()
+        dialog.show(parentFragmentManager, InvitationDialogFragment.TAG)
     }
 
     override fun onDestroyView() {

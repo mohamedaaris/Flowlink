@@ -2,12 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Session } from '@shared/types';
 import { SIGNALING_WS_URL } from '../config/signaling';
+import InvitationService from '../services/InvitationService';
 import './SessionManager.css';
 
 interface SessionManagerProps {
   deviceId: string;
   deviceName: string;
   deviceType: 'phone' | 'laptop' | 'desktop' | 'tablet';
+  username: string;
+  invitationService: InvitationService | null;
   onSessionCreated: (session: Session) => void;
   onSessionJoined: (session: Session) => void;
 }
@@ -16,6 +19,8 @@ export default function SessionManager({
   deviceId,
   deviceName,
   deviceType,
+  username,
+  invitationService,
   onSessionCreated,
   onSessionJoined,
 }: SessionManagerProps) {
@@ -25,11 +30,57 @@ export default function SessionManager({
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  const joinSessionWithCode = async (code: string) => {
+    if (!code || code.length !== 6) {
+      setError('Invalid session code');
+      return;
+    }
+
+    try {
+      setError(null);
+      let ws = wsRef.current;
+      
+      // Use existing WebSocket or create new one
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        ws = await connectWebSocket();
+        wsRef.current = ws;
+      }
+
+      ws.send(JSON.stringify({
+        type: 'session_join',
+        payload: {
+          code: code,
+          deviceId,
+          deviceName,
+          deviceType,
+          username,
+        },
+        timestamp: Date.now(),
+      }));
+    } catch (err) {
+      setError('Failed to connect to server');
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
+    // Listen for invitation acceptance events
+    const handleJoinFromInvitation = (event: CustomEvent) => {
+      const { sessionCode } = event.detail;
+      console.log('SessionManager received join invitation event:', sessionCode);
+      
+      // Join the session directly
+      joinSessionWithCode(sessionCode);
+    };
+
+    // Add event listener for invitation acceptance
+    window.addEventListener('joinSessionFromInvitation', handleJoinFromInvitation as EventListener);
+
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
       }
+      window.removeEventListener('joinSessionFromInvitation', handleJoinFromInvitation as EventListener);
     };
   }, []);
 
@@ -38,12 +89,12 @@ export default function SessionManager({
       const ws = new WebSocket(SIGNALING_WS_URL);
       
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('SessionManager WebSocket connected');
         resolve(ws);
       };
       
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('SessionManager WebSocket error:', error);
         reject(error);
       };
       
@@ -66,6 +117,7 @@ export default function SessionManager({
           devices: new Map([[deviceId, {
             id: deviceId,
             name: deviceName,
+            username: username,
             type: deviceType,
             online: true,
             permissions: {
@@ -107,6 +159,7 @@ export default function SessionManager({
                 {
                   id: d.id,
                   name: d.name,
+                  username: d.username,
                   type: d.type,
                   online: d.online,
                   permissions: d.permissions,
@@ -153,6 +206,7 @@ export default function SessionManager({
           deviceId,
           deviceName,
           deviceType,
+          username,
         },
         timestamp: Date.now(),
       }));
@@ -168,25 +222,7 @@ export default function SessionManager({
       return;
     }
 
-    try {
-      setError(null);
-      const ws = await connectWebSocket();
-      wsRef.current = ws;
-
-      ws.send(JSON.stringify({
-        type: 'session_join',
-        payload: {
-          code: sessionCode,
-          deviceId,
-          deviceName,
-          deviceType,
-        },
-        timestamp: Date.now(),
-      }));
-    } catch (err) {
-      setError('Failed to connect to server');
-      console.error(err);
-    }
+    await joinSessionWithCode(sessionCode);
   };
 
   if (createdSession) {

@@ -38,6 +38,9 @@ const sessions = new Map();
 // WebSocket connections by device ID
 const deviceConnections = new Map();
 
+// Global device registry (tracks all devices regardless of session)
+const globalDevices = new Map();
+
 // Create HTTP server for health checks
 const server = createServer((req, res) => {
   if (req.url === '/health') {
@@ -77,6 +80,10 @@ wss.on('connection', (ws, req) => {
       const message = JSON.parse(data.toString());
       
       switch (message.type) {
+        case 'device_register':
+          handleDeviceRegister(ws, message);
+          break;
+          
         case 'session_create':
           handleSessionCreate(ws, message);
           break;
@@ -119,6 +126,21 @@ wss.on('connection', (ws, req) => {
           handleGroupDelete(ws, message);
           break;
           
+        case 'session_invitation':
+          console.log('📨 Received session_invitation:', message);
+          handleSessionInvitation(ws, message);
+          break;
+          
+        case 'invitation_response':
+          console.log('📨 Received invitation_response:', message);
+          handleInvitationResponse(ws, message);
+          break;
+          
+        case 'nearby_session_broadcast':
+          console.log('📨 Received nearby_session_broadcast:', message);
+          handleNearbySessionBroadcast(ws, message);
+          break;
+          
         case 'group_broadcast':
           handleGroupBroadcast(ws, message);
           break;
@@ -135,6 +157,11 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (deviceId && sessionId) {
       handleDeviceDisconnect(deviceId, sessionId);
+    }
+    // Also remove from global registry
+    if (deviceId) {
+      globalDevices.delete(deviceId);
+      console.log(`Device ${deviceId} removed from global registry`);
     }
   });
 
@@ -161,13 +188,73 @@ wss.on('connection', (ws, req) => {
 });
 
 /**
+ * Handle device registration for invitation listening
+ */
+function handleDeviceRegister(ws, message) {
+  const { deviceId, deviceName, deviceType, username } = message.payload;
+  
+  if (!deviceId || !deviceName || !deviceType || !username) {
+    sendError(ws, 'Missing required fields: deviceId, deviceName, deviceType, username');
+    return;
+  }
+
+  // Register device globally for invitation listening
+  const device = {
+    id: deviceId,
+    name: deviceName,
+    username: username,
+    type: deviceType,
+    online: true,
+    permissions: {
+      files: false,
+      media: false,
+      prompts: false,
+      clipboard: false,
+      remote_browse: false
+    },
+    joinedAt: Date.now(),
+    lastSeen: Date.now()
+  };
+
+  globalDevices.set(deviceId, {
+    ...device,
+    sessionId: null, // Not in a session yet
+    ws: ws
+  });
+
+  deviceConnections.set(deviceId, ws);
+  
+  // Store device info on WebSocket
+  ws.deviceId = deviceId;
+  ws.sessionId = null;
+
+  console.log(`Device ${deviceId} (${device.username}) registered globally for invitation listening`);
+  console.log(`Global devices now: ${globalDevices.size} total`);
+  globalDevices.forEach((dev, id) => {
+    console.log(`  - ${id.substring(0, 8)}...: ${dev.username} (${dev.name}) - Session: ${dev.sessionId || 'none'}`);
+  });
+
+  // Send confirmation
+  ws.send(JSON.stringify({
+    type: 'device_registered',
+    deviceId,
+    payload: {
+      deviceId,
+      username,
+      registered: true
+    },
+    timestamp: Date.now()
+  }));
+}
+
+/**
  * Handle session creation
  */
 function handleSessionCreate(ws, message) {
-  const { deviceId, deviceName, deviceType } = message.payload;
+  const { deviceId, deviceName, deviceType, username } = message.payload;
   
-  if (!deviceId || !deviceName || !deviceType) {
-    sendError(ws, 'Missing required fields: deviceId, deviceName, deviceType');
+  if (!deviceId || !deviceName || !deviceType || !username) {
+    sendError(ws, 'Missing required fields: deviceId, deviceName, deviceType, username');
     return;
   }
 
@@ -190,6 +277,7 @@ function handleSessionCreate(ws, message) {
   const device = {
     id: deviceId,
     name: deviceName,
+    username: username,
     type: deviceType,
     online: true,
     permissions: {
@@ -206,6 +294,19 @@ function handleSessionCreate(ws, message) {
   session.devices.set(deviceId, device);
   sessions.set(sessionId, session);
   deviceConnections.set(deviceId, ws);
+  
+  // Register device globally
+  globalDevices.set(deviceId, {
+    ...device,
+    sessionId: sessionId,
+    ws: ws
+  });
+
+  console.log(`Device ${deviceId} (${device.username}) registered globally`);
+  console.log(`Global devices now: ${globalDevices.size} total`);
+  globalDevices.forEach((dev, id) => {
+    console.log(`  - ${id.substring(0, 8)}...: ${dev.username} (${dev.name})`);
+  });
 
   // Store device info on WebSocket
   ws.deviceId = deviceId;
@@ -225,16 +326,19 @@ function handleSessionCreate(ws, message) {
   }));
 
   console.log(`Session created: ${sessionId} (code: ${code}) by device ${deviceId}`);
+  
+  // Auto-broadcast to nearby devices
+  broadcastNearbySession(sessionId);
 }
 
 /**
  * Handle session join
  */
 function handleSessionJoin(ws, message) {
-  const { code, deviceId, deviceName, deviceType } = message.payload;
+  const { code, deviceId, deviceName, deviceType, username } = message.payload;
   
-  if (!code || !deviceId || !deviceName || !deviceType) {
-    sendError(ws, 'Missing required fields: code, deviceId, deviceName, deviceType');
+  if (!code || !deviceId || !deviceName || !deviceType || !username) {
+    sendError(ws, 'Missing required fields: code, deviceId, deviceName, deviceType, username');
     return;
   }
 
@@ -281,6 +385,7 @@ function handleSessionJoin(ws, message) {
         devices: Array.from(session.devices.values()).map(d => ({
           id: d.id,
           name: d.name,
+          username: d.username,
           type: d.type,
           online: d.online,
           permissions: d.permissions,
@@ -300,6 +405,7 @@ function handleSessionJoin(ws, message) {
         device: {
           id: existingDevice.id,
           name: existingDevice.name,
+          username: existingDevice.username,
           type: existingDevice.type,
           online: true,
           permissions: existingDevice.permissions,
@@ -317,6 +423,7 @@ function handleSessionJoin(ws, message) {
   const device = {
     id: deviceId,
     name: deviceName,
+    username: username,
     type: deviceType,
     online: true,
     permissions: {
@@ -332,6 +439,19 @@ function handleSessionJoin(ws, message) {
 
   session.devices.set(deviceId, device);
   deviceConnections.set(deviceId, ws);
+  
+  // Register device globally
+  globalDevices.set(deviceId, {
+    ...device,
+    sessionId: session.id,
+    ws: ws
+  });
+
+  console.log(`Device ${deviceId} (${device.username}) registered globally`);
+  console.log(`Global devices now: ${globalDevices.size} total`);
+  globalDevices.forEach((dev, id) => {
+    console.log(`  - ${id.substring(0, 8)}...: ${dev.username} (${dev.name})`);
+  });
 
   // Store device info on WebSocket
   ws.deviceId = deviceId;
@@ -347,6 +467,7 @@ function handleSessionJoin(ws, message) {
       device: {
         id: device.id,
         name: device.name,
+        username: device.username,
         type: device.type,
         online: true,
         permissions: device.permissions,
@@ -366,6 +487,7 @@ function handleSessionJoin(ws, message) {
       devices: Array.from(session.devices.values()).map(d => ({
         id: d.id,
         name: d.name,
+        username: d.username,
         type: d.type,
         online: d.online,
         permissions: d.permissions,
@@ -416,7 +538,7 @@ function handleDeviceDisconnect(deviceId, sessionId) {
         timestamp: Date.now()
       });
 
-      // Close all device connections in this session
+      // Close all device connections in this session and remove from global registry
       for (const [otherDeviceId] of session.devices.entries()) {
         const ws = deviceConnections.get(otherDeviceId);
         if (ws && ws.readyState === ws.OPEN) {
@@ -427,6 +549,7 @@ function handleDeviceDisconnect(deviceId, sessionId) {
           }
         }
         deviceConnections.delete(otherDeviceId);
+        globalDevices.delete(otherDeviceId);
       }
 
       sessions.delete(sessionId);
@@ -443,7 +566,8 @@ function handleDeviceDisconnect(deviceId, sessionId) {
     }, deviceId);
 
     deviceConnections.delete(deviceId);
-    console.log(`Device ${deviceId} disconnected from session ${sessionId}`);
+    globalDevices.delete(deviceId);
+    console.log(`Device ${deviceId} disconnected from session ${sessionId} and removed from global registry`);
   }
 
   // Clean up empty sessions
@@ -889,3 +1013,251 @@ function generateRandomColor() {
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
+/**
+ * Handle session invitation
+ */
+function handleSessionInvitation(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { targetIdentifier, invitation } = message.payload;
+
+  console.log(`handleSessionInvitation: Device ${deviceId} inviting ${targetIdentifier} to session ${sessionId}`);
+
+  if (!targetIdentifier || !invitation) {
+    sendError(ws, 'Missing required fields: targetIdentifier, invitation');
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  console.log(`Looking for target: ${targetIdentifier}`);
+  console.log(`Global devices available:`, Array.from(globalDevices.entries()).map(([id, device]) => `${id}:${device.username}`));
+
+  // Search in global device registry first (most efficient)
+  let targetDevice = null;
+  let targetWs = null;
+
+  // Try to find by username in global registry
+  for (const [devId, device] of globalDevices) {
+    if (device.username === targetIdentifier || devId === targetIdentifier) {
+      // Make sure device is still connected and not the sender
+      if (devId !== deviceId && deviceConnections.has(devId)) {
+        const ws = deviceConnections.get(devId);
+        if (ws && ws.readyState === ws.OPEN) {
+          targetDevice = device;
+          targetWs = ws;
+          console.log(`✅ Found target device in global registry: ${device.username} (${devId})`);
+          break;
+        }
+      }
+    }
+  }
+
+  // If not found in global registry, search all sessions (fallback)
+  if (!targetDevice) {
+    console.log(`Target not found in global registry. Searching all sessions...`);
+    
+    for (const [sid, sess] of sessions) {
+      for (const [devId, device] of sess.devices) {
+        if ((device.username === targetIdentifier || devId === targetIdentifier) && devId !== deviceId) {
+          const ws = deviceConnections.get(devId);
+          if (ws && ws.readyState === ws.OPEN) {
+            targetDevice = device;
+            targetWs = ws;
+            console.log(`✅ Found target device in session ${sid}: ${device.username} (${devId})`);
+            break;
+          }
+        }
+      }
+      if (targetDevice) break;
+    }
+  }
+
+  if (!targetDevice || !targetWs) {
+    console.log(`❌ User "${targetIdentifier}" not found or not online`);
+    sendError(ws, `User "${targetIdentifier}" not found or not online`);
+    return;
+  }
+
+  // Send invitation to target device
+  console.log(`📨 Sending invitation to ${targetDevice.username} (${targetDevice.id})`);
+  targetWs.send(JSON.stringify({
+    type: 'session_invitation',
+    sessionId: invitation.sessionId,
+    deviceId: targetDevice.id,
+    payload: { invitation },
+    timestamp: Date.now()
+  }));
+
+  // Send confirmation to sender
+  ws.send(JSON.stringify({
+    type: 'invitation_sent',
+    sessionId,
+    deviceId,
+    payload: { 
+      targetIdentifier,
+      targetUsername: targetDevice.username,
+      targetDeviceName: targetDevice.name
+    },
+    timestamp: Date.now()
+  }));
+
+  console.log(`✅ Session invitation sent to ${targetIdentifier}`);
+}
+
+/**
+ * Handle invitation response
+ */
+function handleInvitationResponse(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { accepted, inviteeUsername, inviteeDeviceName } = message.payload;
+
+  console.log(`handleInvitationResponse: Device ${deviceId} ${accepted ? 'accepted' : 'rejected'} invitation to session ${sessionId}`);
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  // Find the session creator to notify them
+  const creatorDevice = session.devices.get(session.createdBy);
+  const creatorWs = deviceConnections.get(session.createdBy);
+
+  if (creatorWs && creatorWs.readyState === creatorWs.OPEN) {
+    creatorWs.send(JSON.stringify({
+      type: 'invitation_response',
+      sessionId,
+      deviceId: session.createdBy,
+      payload: {
+        accepted,
+        inviteeUsername,
+        inviteeDeviceName,
+        inviteeDeviceId: deviceId
+      },
+      timestamp: Date.now()
+    }));
+  }
+
+  if (accepted) {
+    // If accepted, the invitee will join via normal session_join flow
+    console.log(`${inviteeUsername} accepted invitation to session ${sessionId}`);
+  } else {
+    console.log(`${inviteeUsername} rejected invitation to session ${sessionId}`);
+  }
+}
+
+/**
+ * Handle nearby session broadcast
+ */
+function handleNearbySessionBroadcast(ws, message) {
+  const { sessionId, deviceId } = message;
+  const { range } = message.payload || {};
+
+  console.log(`handleNearbySessionBroadcast: Device ${deviceId} broadcasting session ${sessionId} to nearby devices`);
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    sendError(ws, 'Session not found');
+    return;
+  }
+
+  const creatorDevice = session.devices.get(session.createdBy);
+  if (!creatorDevice) {
+    sendError(ws, 'Session creator not found');
+    return;
+  }
+
+  // Broadcast to all connected devices (simulating nearby discovery)
+  // In a real implementation, this would use location/network-based discovery
+  let notificationsSent = 0;
+  for (const [devId, targetWs] of deviceConnections) {
+    if (devId !== deviceId && targetWs && targetWs.readyState === targetWs.OPEN) {
+      // Don't send to devices already in this session
+      if (!session.devices.has(devId)) {
+        targetWs.send(JSON.stringify({
+          type: 'nearby_session_broadcast',
+          sessionId: null, // Don't expose the actual session ID
+          deviceId: devId,
+          payload: {
+            nearbySession: {
+              sessionId: sessionId,
+              sessionCode: session.code,
+              creatorUsername: creatorDevice.username,
+              creatorDeviceName: creatorDevice.name,
+              deviceCount: session.devices.size
+            }
+          },
+          timestamp: Date.now()
+        }));
+        notificationsSent++;
+      }
+    }
+  }
+
+  // Acknowledge to sender
+  ws.send(JSON.stringify({
+    type: 'nearby_broadcast_sent',
+    sessionId,
+    deviceId,
+    payload: { notificationsSent },
+    timestamp: Date.now()
+  }));
+
+  console.log(`Nearby session broadcast sent to ${notificationsSent} devices`);
+}
+
+/**
+ * Find session by device ID
+ */
+function findSessionByDeviceId(deviceId) {
+  for (const [sessionId, session] of sessions) {
+    if (session.devices.has(deviceId)) {
+      return session;
+    }
+  }
+  return null;
+}
+
+/**
+ * Auto-broadcast nearby sessions when a session is created
+ */
+function broadcastNearbySession(sessionId) {
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  const creatorDevice = session.devices.get(session.createdBy);
+  if (!creatorDevice) return;
+
+  // Auto-broadcast to nearby devices after a short delay
+  setTimeout(() => {
+    let notificationsSent = 0;
+    for (const [devId, targetWs] of deviceConnections) {
+      if (devId !== session.createdBy && targetWs && targetWs.readyState === targetWs.OPEN) {
+        // Don't send to devices already in this session
+        if (!session.devices.has(devId)) {
+          targetWs.send(JSON.stringify({
+            type: 'nearby_session_broadcast',
+            sessionId: null,
+            deviceId: devId,
+            payload: {
+              nearbySession: {
+                sessionId: sessionId,
+                sessionCode: session.code,
+                creatorUsername: creatorDevice.username,
+                creatorDeviceName: creatorDevice.name,
+                deviceCount: session.devices.size
+              }
+            },
+            timestamp: Date.now()
+          }));
+          notificationsSent++;
+        }
+      }
+    }
+    console.log(`Auto-broadcast nearby session ${sessionId} to ${notificationsSent} devices`);
+  }, 2000); // 2 second delay
+}

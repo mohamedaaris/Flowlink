@@ -12,6 +12,7 @@ import PermissionEngine from '../services/PermissionEngine';
 import MediaDetector from '../services/MediaDetector';
 import { groupService } from '../services/GroupService';
 import { SIGNALING_WS_URL } from '../config/signaling';
+import InvitationPanel from './InvitationPanel';
 import './DeviceTiles.css';
 
 interface DeviceTilesProps {
@@ -19,6 +20,8 @@ interface DeviceTilesProps {
   deviceId: string;
   deviceName: string;
   deviceType: 'phone' | 'laptop' | 'desktop' | 'tablet';
+  username: string;
+  invitationService: InvitationService | null;
   onLeaveSession: () => void;
 }
 
@@ -27,6 +30,8 @@ export default function DeviceTiles({
   deviceId,
   deviceName,
   deviceType,
+  username,
+  invitationService,
   onLeaveSession,
 }: DeviceTilesProps) {
   const [devices, setDevices] = useState<Map<string, Device>>(() => {
@@ -55,6 +60,7 @@ export default function DeviceTiles({
   });
   const [groups, setGroups] = useState<Group[]>([]);
   const [draggedItem, setDraggedItem] = useState<any>(null);
+  const [showInvitationPanel, setShowInvitationPanel] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const webrtcManagerRef = useRef<WebRTCManager | null>(null);
   const intentRouterRef = useRef<IntentRouter | null>(null);
@@ -75,6 +81,12 @@ export default function DeviceTiles({
 
     ws.onopen = () => {
       console.log('DeviceTiles WebSocket connected, rejoining session:', session.code);
+      
+      // Set WebSocket for invitation service
+      if (invitationService) {
+        invitationService.setWebSocket(ws);
+      }
+      
       // Re-join session to get updates
       ws.send(JSON.stringify({
         type: 'session_join',
@@ -83,6 +95,7 @@ export default function DeviceTiles({
           deviceId,
           deviceName,
           deviceType,
+          username,
         },
         timestamp: Date.now(),
       }));
@@ -138,6 +151,11 @@ export default function DeviceTiles({
           console.log('Updated devices map:', Array.from(updated.keys()));
           return updated;
         });
+        
+        // Show notification for new device
+        if (newDevice.username && invitationService) {
+          invitationService.showDeviceJoined(newDevice.username, newDevice.name);
+        }
         break;
 
       case 'device_disconnected':
@@ -162,6 +180,61 @@ export default function DeviceTiles({
 
       case 'intent_received':
         handleIncomingIntent(message.payload.intent, message.payload.sourceDevice);
+        break;
+
+      case 'session_invitation':
+        // Handle incoming session invitation
+        const invitation = message.payload.invitation;
+        if (invitationService) {
+          invitationService.handleIncomingInvitation(invitation);
+          // Store invitation data for potential acceptance
+          invitationService.storeInvitationData(invitation.sessionId, invitation.sessionCode);
+        }
+        break;
+
+      case 'nearby_session_broadcast':
+        // Handle nearby session notification
+        const nearbySession = message.payload.nearbySession;
+        if (invitationService) {
+          invitationService.handleNearbySession(nearbySession);
+          // Store session data for potential joining
+          invitationService.storeInvitationData(nearbySession.sessionId, nearbySession.sessionCode);
+        }
+        break;
+
+      case 'invitation_response':
+        // Handle invitation response (accepted/rejected)
+        const response = message.payload;
+        if (invitationService) {
+          if (response.accepted) {
+            invitationService.notificationService.showToast({
+              type: 'success',
+              title: 'Invitation Accepted',
+              message: `${response.inviteeUsername} accepted your invitation`,
+              duration: 4000,
+            });
+          } else {
+            invitationService.notificationService.showToast({
+              type: 'info',
+              title: 'Invitation Declined',
+              message: `${response.inviteeUsername} declined your invitation`,
+              duration: 3000,
+            });
+          }
+        }
+        break;
+
+      case 'invitation_sent':
+        // Handle invitation sent confirmation
+        const sentResponse = message.payload;
+        if (invitationService) {
+          invitationService.notificationService.showToast({
+            type: 'success',
+            title: 'Invitation Sent',
+            message: `Invitation sent to ${sentResponse.targetUsername || sentResponse.targetIdentifier}`,
+            duration: 3000,
+          });
+        }
         break;
 
       case 'session_expired':
@@ -899,6 +972,9 @@ export default function DeviceTiles({
         <h2>Connected Devices</h2>
         <div className="session-info">
           <span>Session: {session.code}</span>
+          <button className="btn-invite" onClick={() => setShowInvitationPanel(true)}>
+            Invite Others
+          </button>
           <button className="btn-leave" onClick={handleLeaveSession}>
             Leave Session
           </button>
@@ -1025,6 +1101,15 @@ export default function DeviceTiles({
           )}
         </div>
       </div>
+
+      {/* Invitation Panel */}
+      <InvitationPanel
+        sessionId={session.id}
+        sessionCode={session.code}
+        invitationService={invitationService}
+        isOpen={showInvitationPanel}
+        onClose={() => setShowInvitationPanel(false)}
+      />
     </div>
   );
 }
