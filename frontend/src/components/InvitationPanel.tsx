@@ -61,24 +61,27 @@ export default function InvitationPanel({
 
     setIsLoading(true);
     try {
-      // Send nearby session broadcast via WebSocket
-      const ws = (invitationService as any).ws;
-      if (ws) {
-        ws.send(JSON.stringify({
-          type: 'nearby_session_broadcast',
-          sessionId,
-          deviceId: (invitationService as any).deviceId,
-          payload: {},
-          timestamp: Date.now(),
-        }));
-        
-        invitationService.notificationService.showToast({
-          type: 'success',
-          title: 'Nearby Broadcast Sent',
-          message: 'Nearby devices will be notified about your session',
-          duration: 3000,
-        });
+      // Use the global WebSocket
+      const ws = (window as any).appWebSocket;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error('WebSocket not connected');
       }
+
+      ws.send(JSON.stringify({
+        type: 'nearby_session_broadcast',
+        sessionId,
+        deviceId: (invitationService as any).deviceId,
+        payload: {},
+        timestamp: Date.now(),
+      }));
+      
+      invitationService.notificationService.showToast({
+        type: 'success',
+        title: 'Nearby Broadcast Sent',
+        message: 'Nearby devices will be notified about your session',
+        duration: 3000,
+      });
+      
       onClose();
     } catch (error) {
       console.error('Failed to broadcast nearby session:', error);

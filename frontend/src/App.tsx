@@ -47,12 +47,16 @@ function App() {
         timestamp: Date.now(),
       }));
       
+      // Store WebSocket reference for components to access
+      wsRef.current = ws;
+      
+      // Make WebSocket globally accessible for components
+      (window as any).appWebSocket = ws;
+      
       // Set WebSocket for invitation service when it's ready
       if (invitationService) {
         invitationService.setWebSocket(ws);
-      } else {
-        // Store WebSocket reference to set later when invitation service is ready
-        wsRef.current = ws;
+        console.log('WebSocket set on InvitationService');
       }
     };
     
@@ -64,6 +68,7 @@ function App() {
     ws.onclose = () => {
       console.log('App-level WebSocket disconnected');
       wsRef.current = null;
+      (window as any).appWebSocket = null;
       // Reconnect after a delay
       setTimeout(connectWebSocket, 2000);
     };
@@ -81,6 +86,15 @@ function App() {
     switch (message.type) {
       case 'device_registered':
         console.log('Device registered for invitation listening:', message.payload);
+        break;
+        
+      case 'session_created':
+      case 'session_joined':
+        // Forward session messages to SessionManager via custom event
+        const sessionEvent = new CustomEvent('sessionMessage', {
+          detail: { message }
+        });
+        window.dispatchEvent(sessionEvent);
         break;
         
       case 'session_invitation':
@@ -171,11 +185,20 @@ function App() {
       // Set WebSocket if already connected
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         service.setWebSocket(wsRef.current);
+        console.log('WebSocket set on new InvitationService');
       }
       
       setInvitationService(service);
     }
   }, [username, deviceId, deviceName, invitationService]);
+
+  // Update InvitationService WebSocket when it changes
+  useEffect(() => {
+    if (invitationService && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      invitationService.setWebSocket(wsRef.current);
+      console.log('WebSocket updated on existing InvitationService');
+    }
+  }, [invitationService, wsRef.current]);
 
   // Connect WebSocket as soon as we have username
   useEffect(() => {

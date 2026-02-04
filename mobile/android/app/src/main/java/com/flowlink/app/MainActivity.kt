@@ -23,6 +23,7 @@ import com.flowlink.app.model.Intent as FlowIntent
 import com.flowlink.app.service.ClipboardSyncService
 import com.flowlink.app.service.SessionManager
 import com.flowlink.app.service.WebSocketManager
+import com.flowlink.app.service.InvitationListenerService
 import com.flowlink.app.ui.DeviceTilesFragment
 import com.flowlink.app.ui.SessionCreatedFragment
 import com.flowlink.app.ui.SessionManagerFragment
@@ -121,10 +122,28 @@ class MainActivity : AppCompatActivity(), UsernameDialogFragment.UsernameDialogL
         
         // Connect to WebSocket immediately to receive invitations
         // even when not in a session
-        if (webSocketManager.connectionState.value !is WebSocketManager.ConnectionState.Connected) {
-            android.util.Log.d("FlowLink", "Connecting WebSocket for invitation listening")
-            webSocketManager.connect("") // Empty code - just for listening to invitations
+        try {
+            if (webSocketManager.connectionState.value !is WebSocketManager.ConnectionState.Connected) {
+                android.util.Log.d("FlowLink", "Connecting WebSocket for invitation listening")
+                webSocketManager.connect("") // Empty code - just for listening to invitations
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FlowLink", "Failed to connect WebSocket", e)
         }
+        
+        // Start background service for notifications when app is closed
+        // TODO: Re-enable after fixing foreground service issues
+        /*
+        val username = sessionManager.getUsername()
+        val deviceId = sessionManager.getDeviceId()
+        val deviceName = sessionManager.getDeviceName()
+        
+        if (username.isNotEmpty() && deviceId.isNotEmpty() && deviceName.isNotEmpty()) {
+            InvitationListenerService.startService(this, username, deviceId, deviceName)
+        } else {
+            android.util.Log.w("FlowLink", "Cannot start InvitationListenerService: missing username, deviceId, or deviceName")
+        }
+        */
         
         // Register clipboard receiver with API level check
         val filter = IntentFilter(ClipboardSyncService.ACTION_CLIPBOARD_CHANGED)

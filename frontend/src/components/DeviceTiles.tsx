@@ -75,17 +75,11 @@ export default function DeviceTiles({
     sessionStorage.setItem('sessionCode', session.code);
     sessionStorage.setItem('deviceId', deviceId);
     
-    // Initialize WebSocket connection
-    const ws = new WebSocket(SIGNALING_WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log('DeviceTiles WebSocket connected, rejoining session:', session.code);
-      
-      // Set WebSocket for invitation service
-      if (invitationService) {
-        invitationService.setWebSocket(ws);
-      }
+    // Use the App-level WebSocket instead of creating a new one
+    const ws = (window as any).appWebSocket;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('DeviceTiles using App-level WebSocket, rejoining session:', session.code);
+      wsRef.current = ws;
       
       // Re-join session to get updates
       ws.send(JSON.stringify({
@@ -99,16 +93,24 @@ export default function DeviceTiles({
         },
         timestamp: Date.now(),
       }));
-    };
+    } else {
+      console.error('App-level WebSocket not available in DeviceTiles');
+    }
 
-    ws.onmessage = (event) => {
+    // Add message listener for DeviceTiles-specific messages
+    const handleDeviceTilesMessage = (event: MessageEvent) => {
       const message = JSON.parse(event.data);
-      handleWebSocketMessage(message);
+      // Only handle messages that DeviceTiles cares about
+      if (['device_connected', 'device_disconnected', 'device_status_update', 
+           'intent_received', 'intent_accepted', 'intent_rejected',
+           'group_created', 'group_updated', 'group_deleted'].includes(message.type)) {
+        handleWebSocketMessage(message);
+      }
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
+    if (ws) {
+      ws.addEventListener('message', handleDeviceTilesMessage);
+    }
 
     // Initialize WebRTC Manager
     webrtcManagerRef.current = new WebRTCManager(ws, deviceId, session.id);
@@ -131,13 +133,15 @@ export default function DeviceTiles({
     groupService.subscribe(setGroups);
 
     return () => {
-      ws.close();
+      if (ws) {
+        ws.removeEventListener('message', handleDeviceTilesMessage);
+      }
       webrtcManagerRef.current?.cleanup();
       permissionEngineRef.current?.revokeAll();
       mediaDetectorRef.current?.cleanup();
       groupService.cleanup();
     };
-  }, [session.code, deviceId, deviceName, deviceType]);
+  }, [session.code, deviceId, deviceName, deviceType, username]);
 
   const handleWebSocketMessage = (message: any) => {
     console.log('DeviceTiles received message:', message.type, message);
@@ -416,7 +420,22 @@ export default function DeviceTiles({
         }));
         console.log('✅ Sent device_status_update to backend');
       } else {
-        console.warn('⚠️ WebSocket not ready, cannot send device_status_update');
+        // Fallback to App-level WebSocket
+        const appWs = (window as any).appWebSocket;
+        if (appWs && appWs.readyState === WebSocket.OPEN) {
+          appWs.send(JSON.stringify({
+            type: 'device_status_update',
+            sessionId: session.id,
+            deviceId,
+            payload: {
+              device: newDevice,
+            },
+            timestamp: Date.now(),
+          }));
+          console.log('✅ Sent device_status_update to backend via App WebSocket');
+        } else {
+          console.warn('⚠️ No WebSocket available, cannot send device_status_update');
+        }
       }
       
       return updated;
@@ -913,10 +932,17 @@ export default function DeviceTiles({
   };
 
   const handleLeaveSession = () => {
-    // Disconnect WebSocket
-    if (wsRef.current) {
-      wsRef.current.close();
+    // Don't close the App-level WebSocket, just leave the session
+    const appWs = (window as any).appWebSocket;
+    if (appWs && appWs.readyState === WebSocket.OPEN) {
+      appWs.send(JSON.stringify({
+        type: 'session_leave',
+        sessionId: session.id,
+        deviceId,
+        timestamp: Date.now(),
+      }));
     }
+    
     // Cleanup
     webrtcManagerRef.current?.cleanup();
     // Clear session

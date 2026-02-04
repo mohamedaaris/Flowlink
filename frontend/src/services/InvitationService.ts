@@ -43,6 +43,7 @@ export default class InvitationService {
    */
   setWebSocket(ws: WebSocket) {
     this.ws = ws;
+    console.log('InvitationService: WebSocket set, readyState:', ws.readyState);
   }
 
   /**
@@ -54,8 +55,23 @@ export default class InvitationService {
     sessionCode: string,
     message?: string
   ): Promise<void> {
-    if (!this.ws) {
-      throw new Error('WebSocket not connected');
+    console.log('InvitationService: Attempting to send invitation');
+    console.log('  WebSocket state:', this.ws?.readyState);
+    console.log('  Target:', targetIdentifier);
+    console.log('  Session:', sessionId);
+
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.error('InvitationService: WebSocket not connected, trying global WebSocket');
+      
+      // Fallback to global WebSocket
+      const globalWs = (window as any).appWebSocket;
+      if (!globalWs || globalWs.readyState !== WebSocket.OPEN) {
+        throw new Error('WebSocket not connected');
+      }
+      
+      // Use global WebSocket
+      this.ws = globalWs;
+      console.log('InvitationService: Using global WebSocket');
     }
 
     const invitation: Intent = {
@@ -75,6 +91,7 @@ export default class InvitationService {
       timestamp: Date.now(),
     };
 
+    console.log('InvitationService: Sending invitation message');
     this.ws.send(JSON.stringify({
       type: 'session_invitation',
       sessionId,
@@ -86,13 +103,7 @@ export default class InvitationService {
       timestamp: Date.now(),
     }));
 
-    // Show confirmation toast
-    this.notificationService.showToast({
-      type: 'success',
-      title: 'Invitation Sent',
-      message: `Invitation sent to ${targetIdentifier}`,
-      duration: 3000,
-    });
+    console.log('InvitationService: Invitation sent successfully');
   }
 
   /**

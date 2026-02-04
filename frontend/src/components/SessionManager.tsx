@@ -38,13 +38,19 @@ export default function SessionManager({
 
     try {
       setError(null);
-      let ws = wsRef.current;
       
-      // Use existing WebSocket or create new one
+      // Use the App-level WebSocket
+      const ws = (window as any).appWebSocket;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        ws = await connectWebSocket();
-        wsRef.current = ws;
+        setError('Not connected to server');
+        console.error('WebSocket not available for join:', {
+          globalWs: (window as any).appWebSocket,
+          readyState: ws?.readyState
+        });
+        return;
       }
+
+      console.log('Joining session with App-level WebSocket');
 
       ws.send(JSON.stringify({
         type: 'session_join',
@@ -58,8 +64,8 @@ export default function SessionManager({
         timestamp: Date.now(),
       }));
     } catch (err) {
-      setError('Failed to connect to server');
-      console.error(err);
+      setError('Failed to send session join request');
+      console.error('Session join error:', err);
     }
   };
 
@@ -73,14 +79,23 @@ export default function SessionManager({
       joinSessionWithCode(sessionCode);
     };
 
-    // Add event listener for invitation acceptance
+    // Listen for session messages from App-level WebSocket
+    const handleSessionMessage = (event: CustomEvent) => {
+      const { message } = event.detail;
+      console.log('SessionManager received session message:', message.type);
+      handleWebSocketMessage(message);
+    };
+
+    // Add event listeners
     window.addEventListener('joinSessionFromInvitation', handleJoinFromInvitation as EventListener);
+    window.addEventListener('sessionMessage', handleSessionMessage as EventListener);
 
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
       }
       window.removeEventListener('joinSessionFromInvitation', handleJoinFromInvitation as EventListener);
+      window.removeEventListener('sessionMessage', handleSessionMessage as EventListener);
     };
   }, []);
 
@@ -197,8 +212,19 @@ export default function SessionManager({
   const handleCreateSession = async () => {
     try {
       setError(null);
-      const ws = await connectWebSocket();
-      wsRef.current = ws;
+      
+      // Use the App-level WebSocket
+      const ws = (window as any).appWebSocket;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setError('Not connected to server');
+        console.error('WebSocket not available for session creation:', {
+          globalWs: (window as any).appWebSocket,
+          readyState: ws?.readyState
+        });
+        return;
+      }
+
+      console.log('Creating session with App-level WebSocket');
 
       ws.send(JSON.stringify({
         type: 'session_create',
@@ -211,8 +237,8 @@ export default function SessionManager({
         timestamp: Date.now(),
       }));
     } catch (err) {
-      setError('Failed to connect to server');
-      console.error(err);
+      setError('Failed to send session create request');
+      console.error('Session create error:', err);
     }
   };
 

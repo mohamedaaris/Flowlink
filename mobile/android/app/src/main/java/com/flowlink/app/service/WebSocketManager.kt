@@ -69,25 +69,26 @@ class WebSocketManager(private val mainActivity: MainActivity) {
     private val WS_URL = "ws://192.168.0.106:8080"
 
     fun connect(sessionCode: String) {
-        if (_connectionState.value == ConnectionState.Connected) {
-            return
-        }
+        try {
+            if (_connectionState.value == ConnectionState.Connected) {
+                return
+            }
 
-        // Clear any stale device_connected event from a previous session
-        resetDeviceConnectedEvent()
+            // Clear any stale device_connected event from a previous session
+            resetDeviceConnectedEvent()
 
-        // Track join flow state when we are connecting with a code
-        if (sessionCode.isNotEmpty()) {
-            _sessionJoinState.value = SessionJoinState.InProgress
-        } else {
-            _sessionJoinState.value = SessionJoinState.Idle
-        }
+            // Track join flow state when we are connecting with a code
+            if (sessionCode.isNotEmpty()) {
+                _sessionJoinState.value = SessionJoinState.InProgress
+            } else {
+                _sessionJoinState.value = SessionJoinState.Idle
+            }
 
-        val request = Request.Builder()
-            .url(WS_URL)
-            .build()
+            val request = Request.Builder()
+                .url(WS_URL)
+                .build()
 
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d("FlowLink", "WebSocket connected")
                 Log.d("FlowLink", "  Device ID: ${sessionManager.getDeviceId()}")
@@ -163,6 +164,10 @@ class WebSocketManager(private val mainActivity: MainActivity) {
                 }
             }
         })
+        } catch (e: Exception) {
+            Log.e("FlowLink", "Failed to connect WebSocket", e)
+            _connectionState.value = ConnectionState.Error(e.message ?: "Connection failed")
+        }
     }
 
     fun disconnect() {
