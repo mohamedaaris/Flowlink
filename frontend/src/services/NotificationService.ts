@@ -1,4 +1,4 @@
-import { NotificationData, NotificationAction } from '@shared/types';
+import { NotificationAction } from '@shared/types';
 
 export interface ToastNotification {
   id: string;
@@ -181,8 +181,6 @@ export default class NotificationService {
       animation: toastSlideIn 0.3s ease-out;
       max-width: 100%;
     `;
-
-    const typeColor = this.getTypeColor(toast.type);
     
     element.innerHTML = `
       <div style="display: flex; align-items: flex-start; gap: 12px;">

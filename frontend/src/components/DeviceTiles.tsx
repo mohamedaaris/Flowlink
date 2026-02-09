@@ -11,7 +11,7 @@ import ContinuityEngine from '../services/ContinuityEngine';
 import PermissionEngine from '../services/PermissionEngine';
 import MediaDetector from '../services/MediaDetector';
 import { groupService } from '../services/GroupService';
-import { SIGNALING_WS_URL } from '../config/signaling';
+import InvitationService from '../services/InvitationService';
 import InvitationPanel from './InvitationPanel';
 import './DeviceTiles.css';
 
@@ -258,6 +258,7 @@ export default function DeviceTiles({
               deviceMap.set(d.id, {
                 id: d.id,
                 name: d.name,
+                username: d.username || 'Unknown',
                 type: d.type,
                 online: d.online,
                 permissions: d.permissions || {

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Session } from '@shared/types';
-import { SIGNALING_WS_URL } from '../config/signaling';
 import InvitationService from '../services/InvitationService';
 import './SessionManager.css';
 
@@ -20,7 +19,6 @@ export default function SessionManager({
   deviceName,
   deviceType,
   username,
-  invitationService,
   onSessionCreated,
   onSessionJoined,
 }: SessionManagerProps) {
@@ -98,27 +96,6 @@ export default function SessionManager({
       window.removeEventListener('sessionMessage', handleSessionMessage as EventListener);
     };
   }, []);
-
-  const connectWebSocket = (): Promise<WebSocket> => {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(SIGNALING_WS_URL);
-      
-      ws.onopen = () => {
-        console.log('SessionManager WebSocket connected');
-        resolve(ws);
-      };
-      
-      ws.onerror = (error) => {
-        console.error('SessionManager WebSocket error:', error);
-        reject(error);
-      };
-      
-      ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        handleWebSocketMessage(message);
-      };
-    });
-  };
 
   const handleWebSocketMessage = (message: any) => {
     switch (message.type) {

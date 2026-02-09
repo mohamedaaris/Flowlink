@@ -92,7 +92,7 @@ export default class InvitationService {
     };
 
     console.log('InvitationService: Sending invitation message');
-    this.ws.send(JSON.stringify({
+    this.ws!.send(JSON.stringify({
       type: 'session_invitation',
       sessionId,
       deviceId: this.deviceId,
