@@ -22,6 +22,7 @@ function App() {
     return localStorage.getItem('flowlink_username');
   });
   const [invitationService, setInvitationService] = useState<InvitationService | null>(null);
+  const invitationServiceRef = useRef<InvitationService | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Connect to WebSocket for persistent invitation listening
@@ -54,9 +55,11 @@ function App() {
       (window as any).appWebSocket = ws;
       
       // Set WebSocket for invitation service when it's ready
-      if (invitationService) {
-        invitationService.setWebSocket(ws);
+      if (invitationServiceRef.current) {
+        invitationServiceRef.current.setWebSocket(ws);
         console.log('WebSocket set on InvitationService');
+      } else {
+        console.warn('InvitationService not ready when WebSocket connected');
       }
     };
     
@@ -102,13 +105,13 @@ function App() {
         console.log('📨 App.tsx received session_invitation:', message);
         const invitation = message.payload.invitation;
         console.log('  Invitation data:', invitation);
-        console.log('  InvitationService available:', !!invitationService);
+        console.log('  InvitationService available:', !!invitationServiceRef.current);
         
-        if (invitationService) {
+        if (invitationServiceRef.current) {
           console.log('  Calling handleIncomingInvitation...');
-          invitationService.handleIncomingInvitation(invitation);
+          invitationServiceRef.current.handleIncomingInvitation(invitation);
           // Store invitation data for potential acceptance
-          invitationService.storeInvitationData(invitation.sessionId, invitation.sessionCode);
+          invitationServiceRef.current.storeInvitationData(invitation.sessionId, invitation.sessionCode);
           console.log('  Invitation handled successfully');
         } else {
           console.error('  InvitationService not available!');
@@ -120,13 +123,13 @@ function App() {
         console.log('📨 App.tsx received nearby_session_broadcast:', message);
         const nearbySession = message.payload.nearbySession;
         console.log('  Nearby session data:', nearbySession);
-        console.log('  InvitationService available:', !!invitationService);
+        console.log('  InvitationService available:', !!invitationServiceRef.current);
         
-        if (invitationService) {
+        if (invitationServiceRef.current) {
           console.log('  Calling handleNearbySession...');
-          invitationService.handleNearbySession(nearbySession);
+          invitationServiceRef.current.handleNearbySession(nearbySession);
           // Store session data for potential joining
-          invitationService.storeInvitationData(nearbySession.sessionId, nearbySession.sessionCode);
+          invitationServiceRef.current.storeInvitationData(nearbySession.sessionId, nearbySession.sessionCode);
           console.log('  Nearby session handled successfully');
         } else {
           console.error('  InvitationService not available!');
@@ -136,16 +139,16 @@ function App() {
       case 'invitation_response':
         // Handle invitation response (accepted/rejected)
         const response = message.payload;
-        if (invitationService) {
+        if (invitationServiceRef.current) {
           if (response.accepted) {
-            invitationService.notificationService.showToast({
+            invitationServiceRef.current.notificationService.showToast({
               type: 'success',
               title: 'Invitation Accepted',
               message: `${response.inviteeUsername} accepted your invitation`,
               duration: 4000,
             });
           } else {
-            invitationService.notificationService.showToast({
+            invitationServiceRef.current.notificationService.showToast({
               type: 'info',
               title: 'Invitation Declined',
               message: `${response.inviteeUsername} declined your invitation`,
@@ -158,8 +161,8 @@ function App() {
       case 'invitation_sent':
         // Handle invitation sent confirmation
         const sentResponse = message.payload;
-        if (invitationService) {
-          invitationService.notificationService.showToast({
+        if (invitationServiceRef.current) {
+          invitationServiceRef.current.notificationService.showToast({
             type: 'success',
             title: 'Invitation Sent',
             message: `Invitation sent to ${sentResponse.targetUsername || sentResponse.targetIdentifier}`,
@@ -184,9 +187,13 @@ function App() {
     window.dispatchEvent(joinEvent);
   };
 
-  // Initialize invitation service when username is available
+  // Initialize invitation service and connect WebSocket when username is available
   useEffect(() => {
-    if (username && !invitationService) {
+    if (!username) return;
+
+    // Create InvitationService first if it doesn't exist
+    if (!invitationServiceRef.current) {
+      console.log('Creating InvitationService for user:', username);
       const service = new InvitationService(
         deviceId,
         username,
@@ -198,27 +205,15 @@ function App() {
         }
       );
       
-      // Set WebSocket if already connected
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        service.setWebSocket(wsRef.current);
-        console.log('WebSocket set on new InvitationService');
-      }
-      
+      // Set both ref and state
+      invitationServiceRef.current = service;
       setInvitationService(service);
+      console.log('InvitationService created and stored in ref');
     }
-  }, [username, deviceId, deviceName, invitationService]);
 
-  // Update InvitationService WebSocket when it changes
-  useEffect(() => {
-    if (invitationService && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      invitationService.setWebSocket(wsRef.current);
-      console.log('WebSocket updated on existing InvitationService');
-    }
-  }, [invitationService, wsRef.current]);
-
-  // Connect WebSocket as soon as we have username
-  useEffect(() => {
-    if (username) {
+    // Connect WebSocket after InvitationService is ready
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.log('Connecting WebSocket with InvitationService ready');
       connectWebSocket();
     }
 
@@ -227,7 +222,15 @@ function App() {
         wsRef.current.close();
       }
     };
-  }, [username]);
+  }, [username, deviceId, deviceName]);
+
+  // Update InvitationService WebSocket when it changes
+  useEffect(() => {
+    if (invitationServiceRef.current && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      invitationServiceRef.current.setWebSocket(wsRef.current);
+      console.log('WebSocket updated on existing InvitationService');
+    }
+  }, [invitationService, wsRef.current]);
 
   const handleUsernameSubmit = (newUsername: string) => {
     setUsername(newUsername);

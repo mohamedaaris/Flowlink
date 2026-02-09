@@ -70,7 +70,7 @@ class WebSocketManager(private val mainActivity: MainActivity) {
     // IMPORTANT: Railway production backend
     // For Railway production: "wss://flowlink-production.up.railway.app"
     // For local development: "ws://10.0.2.2:8080" (emulator) or "ws://YOUR_COMPUTER_IP:8080" (physical device)
-    private val WS_URL = "ws://192.168.0.105:8080"
+    private val WS_URL = "wss://flowlink-production.up.railway.app"
 
     fun connect(sessionCode: String) {
         try {
