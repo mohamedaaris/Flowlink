@@ -99,21 +99,37 @@ function App() {
         
       case 'session_invitation':
         // Handle incoming session invitation
+        console.log('📨 App.tsx received session_invitation:', message);
         const invitation = message.payload.invitation;
+        console.log('  Invitation data:', invitation);
+        console.log('  InvitationService available:', !!invitationService);
+        
         if (invitationService) {
+          console.log('  Calling handleIncomingInvitation...');
           invitationService.handleIncomingInvitation(invitation);
           // Store invitation data for potential acceptance
           invitationService.storeInvitationData(invitation.sessionId, invitation.sessionCode);
+          console.log('  Invitation handled successfully');
+        } else {
+          console.error('  InvitationService not available!');
         }
         break;
 
       case 'nearby_session_broadcast':
         // Handle nearby session notification
+        console.log('📨 App.tsx received nearby_session_broadcast:', message);
         const nearbySession = message.payload.nearbySession;
+        console.log('  Nearby session data:', nearbySession);
+        console.log('  InvitationService available:', !!invitationService);
+        
         if (invitationService) {
+          console.log('  Calling handleNearbySession...');
           invitationService.handleNearbySession(nearbySession);
           // Store session data for potential joining
           invitationService.storeInvitationData(nearbySession.sessionId, nearbySession.sessionCode);
+          console.log('  Nearby session handled successfully');
+        } else {
+          console.error('  InvitationService not available!');
         }
         break;
 

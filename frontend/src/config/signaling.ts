@@ -9,7 +9,7 @@
 function getSignalingWsUrl(): string {
   const envUrl = (import.meta as any)?.env?.VITE_SIGNALING_URL as string | undefined;
   // Default to local development backend
-  return envUrl || 'ws://192.168.0.106:8080';
+  return envUrl || 'ws://192.168.0.105:8080';
 }
 
 export const SIGNALING_WS_URL = getSignalingWsUrl();

@@ -44,6 +44,10 @@ class WebSocketManager(private val mainActivity: MainActivity) {
     private val _sessionJoinState = MutableStateFlow<SessionJoinState>(SessionJoinState.Idle)
     val sessionJoinState: StateFlow<SessionJoinState> = _sessionJoinState
 
+    // Emits when session expires so UI can navigate back
+    private val _sessionExpired = MutableStateFlow<Boolean>(false)
+    val sessionExpired: StateFlow<Boolean> = _sessionExpired
+
     private fun resetDeviceConnectedEvent() {
         // StateFlow replays the latest value to new collectors (like SessionCreatedFragment).
         // If we don't clear it, the QR screen can immediately auto-navigate to DeviceTiles
@@ -66,7 +70,7 @@ class WebSocketManager(private val mainActivity: MainActivity) {
     // IMPORTANT: Railway production backend
     // For Railway production: "wss://flowlink-production.up.railway.app"
     // For local development: "ws://10.0.2.2:8080" (emulator) or "ws://YOUR_COMPUTER_IP:8080" (physical device)
-    private val WS_URL = "ws://192.168.0.106:8080"
+    private val WS_URL = "ws://192.168.0.105:8080"
 
     fun connect(sessionCode: String) {
         try {
@@ -373,13 +377,26 @@ class WebSocketManager(private val mainActivity: MainActivity) {
                     }
                 }
                 "session_expired" -> {
-                    Log.d("FlowLink", "Session expired")
+                    val payload = json.optJSONObject("payload")
+                    val reason = payload?.optString("reason", "unknown") ?: "unknown"
+                    Log.d("FlowLink", "Session expired, reason: $reason")
+                    
+                    // Emit session expired event for UI to handle
+                    _sessionExpired.value = true
+                    
                     // Clear local session so user can start fresh
                     scope.launch {
                         sessionManager.leaveSession()
                     }
-                    // Let UI know the current/joined session is no longer valid
-                    _sessionJoinState.value = SessionJoinState.Error("Invalid session code")
+                    
+                    // Don't set error state if we're not in a join flow
+                    // This prevents crashes when session expires while app is active
+                    if (_sessionJoinState.value is SessionJoinState.InProgress) {
+                        _sessionJoinState.value = SessionJoinState.Error("Session expired")
+                    }
+                    
+                    // Gracefully disconnect without forcing error state
+                    // The UI will handle the session being cleared
                     disconnect()
                 }
                 "clipboard_sync" -> {

@@ -188,6 +188,26 @@ class MainActivity : AppCompatActivity(), UsernameDialogFragment.UsernameDialogL
             }
         }
 
+        // React to session expiry
+        lifecycleScope.launch {
+            webSocketManager.sessionExpired.collectLatest { expired ->
+                if (expired) {
+                    // Session expired, navigate back to session manager
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Session ended", Toast.LENGTH_SHORT).show()
+                        // Clear back stack and show session manager
+                        supportFragmentManager.popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
+                        supportFragmentManager.beginTransaction()
+                            .replace(R.id.fragment_container, SessionManagerFragment())
+                            .commit()
+                    }
+                    // Reset the expired flag
+                    // Note: This is a workaround since StateFlow doesn't have a reset method
+                    // In production, consider using SharedFlow or Channel instead
+                }
+            }
+        }
+
         // Check camera permission
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED

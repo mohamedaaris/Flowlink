@@ -186,9 +186,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (deviceId && sessionId) {
-      handleDeviceDisconnect(deviceId, sessionId);
-    }
+    console.log(`WebSocket closed for device ${deviceId}, session ${sessionId}`);
     
     // Handle device connection cleanup in global registry
     if (deviceId) {
@@ -207,15 +205,14 @@ wss.on('connection', (ws, req) => {
           // Remove from deviceConnections map
           deviceConnections.delete(deviceId);
           
-          // Optional: Remove from globalDevices after a delay to allow for reconnections
-          setTimeout(() => {
-            const entry = globalDevices.get(deviceId);
-            if (entry && entry.connections.size === 0) {
-              // Only remove if still no connections after delay
-              globalDevices.delete(deviceId);
-              console.log(`Device ${deviceId} removed from global registry after timeout`);
-            }
-          }, 30000); // 30 second grace period for reconnections
+          // IMPORTANT: Don't remove from globalDevices - keep device registered for invitations
+          // This allows devices to receive invitations even when temporarily disconnected
+          console.log(`Device ${deviceId} kept in global registry for future invitations`);
+          
+          // Only handle session disconnect if device was in a session AND has no other connections
+          if (sessionId) {
+            handleDeviceDisconnect(deviceId, sessionId);
+          }
         } else {
           // Device still has other connections, update primary connection
           const remainingConnections = Array.from(deviceEntry.connections);
@@ -223,8 +220,14 @@ wss.on('connection', (ws, req) => {
             deviceConnections.set(deviceId, remainingConnections[0]);
             console.log(`Updated primary connection for device ${deviceId}`);
           }
+          
+          // Don't call handleDeviceDisconnect if device still has active connections
+          console.log(`Device ${deviceId} still has ${deviceEntry.connections.size} active connections, not disconnecting from session`);
         }
       }
+    } else if (sessionId) {
+      // Fallback: if deviceId wasn't set but sessionId was, handle disconnect
+      handleDeviceDisconnect(deviceId, sessionId);
     }
   });
 
@@ -472,6 +475,14 @@ function handleSessionJoin(ws, message) {
     ws.deviceId = deviceId;
     ws.sessionId = session.id;
     
+    // If this is the session owner reconnecting, clear the disconnect timer
+    if (deviceId === session.createdBy && session.ownerDisconnectTimer) {
+      console.log(`Session owner ${deviceId} reconnected to session ${session.id}, canceling expiry timer`);
+      clearTimeout(session.ownerDisconnectTimer);
+      delete session.ownerDisconnectTimer;
+      delete session.ownerDisconnectedAt;
+    }
+    
     // Send current session state
     ws.send(JSON.stringify({
       type: 'session_joined',
@@ -567,27 +578,7 @@ function handleSessionJoin(ws, message) {
   ws.deviceId = deviceId;
   ws.sessionId = session.id;
 
-  // Notify all devices in session
-  console.log(`Broadcasting device_connected for device ${deviceId} to session ${session.id}`);
-  console.log(`Session has ${session.devices.size} devices`);
-  broadcastToSession(session.id, {
-    type: 'device_connected',
-    sessionId: session.id,
-    payload: {
-      device: {
-        id: device.id,
-        name: device.name,
-        username: device.username,
-        type: device.type,
-        online: true,
-        permissions: device.permissions,
-        joinedAt: device.joinedAt
-      }
-    },
-    timestamp: Date.now()
-  });
-
-  // Send join confirmation to new device
+  // Send join confirmation to new device (this includes all devices in the session)
   ws.send(JSON.stringify({
     type: 'session_joined',
     sessionId: session.id,
@@ -608,6 +599,25 @@ function handleSessionJoin(ws, message) {
     timestamp: Date.now()
   }));
 
+  // Only notify OTHER devices about the new device joining
+  // (The new device gets the full device list in session_joined above)
+  broadcastToSession(session.id, {
+    type: 'device_connected',
+    sessionId: session.id,
+    payload: {
+      device: {
+        id: device.id,
+        name: device.name,
+        username: device.username,
+        type: device.type,
+        online: true,
+        permissions: device.permissions,
+        joinedAt: device.joinedAt
+      }
+    },
+    timestamp: Date.now()
+  }, deviceId); // Exclude the new device from this broadcast
+
   console.log(`Device ${deviceId} joined session ${session.id}`);
 }
 
@@ -621,7 +631,54 @@ function handleSessionLeave(ws, message) {
     return;
   }
 
-  handleDeviceDisconnect(deviceId, sessionId);
+  const session = sessions.get(sessionId);
+  if (!session) return;
+
+  // If the session owner explicitly leaves, immediately expire the session
+  if (deviceId === session.createdBy) {
+    console.log(`Session owner ${deviceId} explicitly left session ${sessionId}, expiring immediately`);
+    
+    // Clear any pending disconnect timer
+    if (session.ownerDisconnectTimer) {
+      clearTimeout(session.ownerDisconnectTimer);
+      delete session.ownerDisconnectTimer;
+      delete session.ownerDisconnectedAt;
+    }
+    
+    // Notify all devices that the session has ended
+    broadcastToSession(sessionId, {
+      type: 'session_expired',
+      sessionId,
+      payload: { reason: 'owner_left' },
+      timestamp: Date.now()
+    });
+
+    // Close all device connections in this session
+    for (const [otherDeviceId] of session.devices.entries()) {
+      const ws = deviceConnections.get(otherDeviceId);
+      if (ws && ws.readyState === ws.OPEN) {
+        try {
+          ws.close(1000, 'Session owner left');
+        } catch {
+          // Ignore close errors
+        }
+      }
+      deviceConnections.delete(otherDeviceId);
+      
+      // Update global registry - mark as not in session but don't delete
+      const deviceEntry = globalDevices.get(otherDeviceId);
+      if (deviceEntry) {
+        deviceEntry.sessionId = null;
+        deviceEntry.lastSeen = Date.now();
+      }
+    }
+
+    sessions.delete(sessionId);
+    console.log(`Session ${sessionId} fully cleaned up after owner explicitly left`);
+  } else {
+    // Normal device leave
+    handleDeviceDisconnect(deviceId, sessionId);
+  }
 }
 
 /**
@@ -636,41 +693,74 @@ function handleDeviceDisconnect(deviceId, sessionId) {
     device.online = false;
     device.lastSeen = Date.now();
 
-    // If the session creator leaves, expire the entire session for everyone
+    // If the session creator disconnects, give them a grace period to reconnect
+    // instead of immediately expiring the session
     if (deviceId === session.createdBy) {
-      console.log(`Session owner ${deviceId} left session ${sessionId}, expiring session for all devices`);
+      console.log(`Session owner ${deviceId} disconnected from session ${sessionId}, starting grace period`);
 
-      // Notify all devices that the session has ended
-      broadcastToSession(sessionId, {
-        type: 'session_expired',
-        sessionId,
-        payload: {},
-        timestamp: Date.now()
-      });
-
-      // Close all device connections in this session and update global registry
-      for (const [otherDeviceId] of session.devices.entries()) {
-        const ws = deviceConnections.get(otherDeviceId);
-        if (ws && ws.readyState === ws.OPEN) {
-          try {
-            ws.close(1000, 'Session owner left');
-          } catch {
-            // Ignore close errors
-          }
-        }
-        deviceConnections.delete(otherDeviceId);
+      // Mark session as "owner disconnected" with a timestamp
+      if (!session.ownerDisconnectedAt) {
+        session.ownerDisconnectedAt = Date.now();
         
-        // Update global registry - mark as not in session but don't delete
-        const deviceEntry = globalDevices.get(otherDeviceId);
-        if (deviceEntry) {
-          deviceEntry.sessionId = null;
-          deviceEntry.lastSeen = Date.now();
-        }
-      }
+        // Set a timer to expire the session if owner doesn't reconnect within 30 seconds
+        session.ownerDisconnectTimer = setTimeout(() => {
+          // Check if owner is still offline after grace period
+          const currentSession = sessions.get(sessionId);
+          if (currentSession && currentSession.ownerDisconnectedAt) {
+            const ownerDevice = currentSession.devices.get(currentSession.createdBy);
+            if (ownerDevice && !ownerDevice.online) {
+              console.log(`Session owner ${deviceId} did not reconnect within grace period, expiring session ${sessionId}`);
+              
+              // Notify all devices that the session has ended
+              broadcastToSession(sessionId, {
+                type: 'session_expired',
+                sessionId,
+                payload: { reason: 'owner_left' },
+                timestamp: Date.now()
+              });
 
-      sessions.delete(sessionId);
-      console.log(`Session ${sessionId} fully cleaned up after owner left`);
-      return;
+              // Close all device connections in this session
+              for (const [otherDeviceId] of currentSession.devices.entries()) {
+                const ws = deviceConnections.get(otherDeviceId);
+                if (ws && ws.readyState === ws.OPEN) {
+                  try {
+                    ws.close(1000, 'Session owner left');
+                  } catch {
+                    // Ignore close errors
+                  }
+                }
+                deviceConnections.delete(otherDeviceId);
+                
+                // Update global registry - mark as not in session but don't delete
+                const deviceEntry = globalDevices.get(otherDeviceId);
+                if (deviceEntry) {
+                  deviceEntry.sessionId = null;
+                  deviceEntry.lastSeen = Date.now();
+                }
+              }
+
+              sessions.delete(sessionId);
+              console.log(`Session ${sessionId} fully cleaned up after owner failed to reconnect`);
+            } else {
+              console.log(`Session owner ${deviceId} reconnected, session ${sessionId} remains active`);
+            }
+          }
+        }, 30000); // 30 second grace period
+      }
+      
+      // Notify other devices that owner is temporarily offline
+      broadcastToSession(sessionId, {
+        type: 'device_disconnected',
+        sessionId,
+        payload: { 
+          deviceId,
+          isOwner: true,
+          temporary: true
+        },
+        timestamp: Date.now()
+      }, deviceId);
+      
+      return; // Don't delete from deviceConnections yet, allow reconnection
     }
 
     // Normal device disconnect: notify other devices
@@ -693,11 +783,10 @@ function handleDeviceDisconnect(deviceId, sessionId) {
     console.log(`Device ${deviceId} disconnected from session ${sessionId}`);
   }
 
-  // Clean up empty sessions
+  // Clean up empty sessions (only if no devices are online)
   const onlineDevices = Array.from(session.devices.values()).filter(d => d.online);
   if (onlineDevices.length === 0) {
-    sessions.delete(sessionId);
-    console.log(`Session ${sessionId} cleaned up (no devices)`);
+    console.log(`Session ${sessionId} has no online devices, will expire if no reconnections`);
   }
 }
 
